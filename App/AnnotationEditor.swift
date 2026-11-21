@@ -8,7 +8,6 @@ struct AnnotationEditor: View {
     /// Completes the sample and asks the session screen to open the next capture.
     var onNext: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var document: TreeDocument?
     @State private var cache = SideImageCache()
     @State private var unreadable: Set<Int> = []
@@ -27,6 +26,9 @@ struct AnnotationEditor: View {
     @State private var showMismatch = false
     @State private var draft = MeasurementDraft()
     @FocusState private var field: MeasurementField?
+    /// Whether the editor is wider than tall, measured with the keyboard ignored: the keyboard can shrink the
+    /// content below its width, and switching layouts then would rebuild the focused field.
+    @State private var wide = UIScreen.main.bounds.width > UIScreen.main.bounds.height
     @State private var toast: String?
     @State private var toastToken = UUID()
     @State private var error: String?
@@ -141,7 +143,7 @@ struct AnnotationEditor: View {
     private func editor(_ tree: TreeDocument) -> some View {
         let panel = measurementTarget(tree)
         return GeometryReader { proxy in
-            if proxy.size.width > proxy.size.height {
+            if wide {
                 HStack(alignment: .top, spacing: 12) {
                     photoPanel(tree)
                     controlsColumn(tree, panel: panel)
@@ -161,6 +163,14 @@ struct AnnotationEditor: View {
             }
         }
         .disabled(saving)
+        .background {
+            GeometryReader { probe in
+                Color.clear
+                    .onAppear { wide = probe.size.width > probe.size.height }
+                    .onChange(of: probe.size) { _, size in wide = size.width > size.height }
+            }
+            .ignoresSafeArea(.keyboard)
+        }
     }
 
     /// The selected box of a bunch weight sample. Like Kotlin, selecting one opens the measurement panel.
@@ -174,14 +184,14 @@ struct AnnotationEditor: View {
             ScrollView {
                 controls(tree, panel: panel).padding(.vertical, 8).padding(.horizontal, isLandscape ? 0 : 16)
             }
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.never)
             if panel != nil {
                 MeasurementApplyBar(error: draft.error, disabled: saving || detecting, onApply: applyMeasurements)
             }
         }
     }
 
-    private var isLandscape: Bool { verticalSizeClass == .compact }
+    private var isLandscape: Bool { wide }
 
     private func photoPanel(_ tree: TreeDocument) -> some View {
         VStack(alignment: .leading, spacing: 6) {
