@@ -65,10 +65,6 @@ struct AnnotationEditor: View {
                 Button("Hasil", systemImage: "chart.bar") { showResults = true }
                     .disabled(document == nil || saving || detecting)
             }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Selesai") { field = nil }
-            }
         }
         .sheet(isPresented: $showResults, onDismiss: { Task { await load() } }) {
             if let document { ResultsView(document: document, store: store) }
@@ -186,7 +182,8 @@ struct AnnotationEditor: View {
             }
             .scrollDismissesKeyboard(.never)
             if panel != nil {
-                MeasurementApplyBar(error: draft.error, disabled: saving || detecting, onApply: applyMeasurements)
+                MeasurementApplyBar(error: draft.error, disabled: saving || detecting, keyboardOpen: field != nil,
+                                    onHideKeyboard: { field = nil }, onApply: applyMeasurements)
             }
         }
     }

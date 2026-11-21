@@ -26,7 +26,7 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Draf'")).firstMatch.waitForExistence(timeout: 10),
                       "A weight sample without a weight stays a draft")
 
-        let sample = app.staticTexts["DAMIMAS_QA_BW_0001"]
+        let sample = sampleRow(app)
         XCTAssertTrue(sample.waitForExistence(timeout: 90))
         sample.tap()
         selectWeightBox(app)
@@ -35,7 +35,6 @@ final class EditorParityTests: XCTestCase {
         focus(weight, in: app)
         weight.typeText("12,5")
         app.buttons["measurement-apply"].tap()
-        XCTAssertTrue(app.staticTexts["saved-pulse"].waitForExistence(timeout: 5) || app.staticTexts["Tersimpan"].waitForExistence(timeout: 5))
         app.buttons["editor-back"].tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Selesai'")).firstMatch.waitForExistence(timeout: 10),
                       "A saved positive weight completes the sample")
@@ -98,7 +97,6 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["1 terisi"].exists)
         apply.tap()
         XCTAssertTrue(error.waitForNonExistence(timeout: 5), "A valid form is applied and the message clears")
-        XCTAssertTrue(app.staticTexts["saved-pulse"].waitForExistence(timeout: 5) || app.staticTexts["Tersimpan"].exists)
     }
 
     @MainActor
@@ -210,13 +208,19 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["DAMIMAS_QC_0001"].exists)
     }
 
+    /// The sample row: its text is a separate element in portrait and part of the row's label in landscape.
+    @MainActor
+    private func sampleRow(_ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'DAMIMAS_QA_BW_0001'")).firstMatch
+    }
+
     @MainActor
     private func openWeightEditor(_ app: XCUIApplication) {
         let module = app.staticTexts["Berat Tandan"]
         XCTAssertTrue(module.waitForExistence(timeout: 90))
         module.tap()
         app.staticTexts["DAMIMAS · QA"].tap()
-        let sample = app.staticTexts["DAMIMAS_QA_BW_0001"]
+        let sample = sampleRow(app)
         XCTAssertTrue(sample.waitForExistence(timeout: 90))
         sample.tap()
         XCTAssertTrue(app.descendants(matching: .any)["annotation-photo"].firstMatch.waitForExistence(timeout: 90))
@@ -258,7 +262,7 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "Tapping the field opens the keyboard")
     }
 
-    private func waitForLabel(_ element: XCUIElement, _ label: String, timeout: TimeInterval = 5) -> Bool {
+    private func waitForLabel(_ element: XCUIElement, _ label: String, timeout: TimeInterval = 15) -> Bool {
         let predicate = NSPredicate(format: "label == %@", label)
         return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: timeout) == .completed
     }

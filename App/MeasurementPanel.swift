@@ -106,9 +106,13 @@ struct MeasurementFields: View {
     }
 }
 
+/// Pinned above the keyboard. The decimal pad has no return key, so a button here puts it away; a keyboard
+/// accessory bar would sit over this bar and swallow taps meant for Apply.
 struct MeasurementApplyBar: View {
     let error: String?
     let disabled: Bool
+    let keyboardOpen: Bool
+    let onHideKeyboard: () -> Void
     let onApply: () -> Void
 
     var body: some View {
@@ -120,12 +124,21 @@ struct MeasurementApplyBar: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("measurement-error")
             }
-            Button("Terapkan", action: onApply)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .frame(maxWidth: .infinity)
-                .disabled(disabled)
-                .accessibilityIdentifier("measurement-apply")
+            HStack(spacing: 8) {
+                if keyboardOpen {
+                    Button("Tutup papan ketik", systemImage: "keyboard.chevron.compact.down", action: onHideKeyboard)
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .accessibilityIdentifier("measurement-hide-keyboard")
+                }
+                Button("Terapkan", action: onApply)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .frame(maxWidth: .infinity)
+                    .disabled(disabled)
+                    .accessibilityIdentifier("measurement-apply")
+            }
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
