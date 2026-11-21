@@ -165,6 +165,9 @@ struct RunList: View {
 
     var body: some View {
         List {
+            if job.readyURL != nil || job.notice != nil {
+                Section { ExportResult(job: job, shareTitle: "Bagikan ZIP semua sesi") }
+            }
             if summaries.isEmpty {
                 ContentUnavailableView(type == .bunchWeight ? "Belum ada sesi berat" : "Belum ada sesi", systemImage: type.icon,
                                        description: Text("Buat sesi untuk mulai mengumpulkan data."))
@@ -199,9 +202,6 @@ struct RunList: View {
                 .contextMenu {
                     Button("Hapus", systemImage: "trash", role: .destructive) { pendingDelete = summary }
                 }
-            }
-            if job.readyURL != nil || job.notice != nil {
-                Section { ExportResult(job: job, shareTitle: "Bagikan ZIP semua sesi") }
             }
         }
         .navigationTitle(type.title)

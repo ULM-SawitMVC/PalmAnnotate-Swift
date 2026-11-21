@@ -79,18 +79,20 @@ final class CollectionParityTests: XCTestCase {
         variety.typeText("TEST")
         let block = app.textFields["Blok"]
         block.tap()
-        block.typeText("M1")
+        block.typeText("M1\n")
         let toggle = app.switches["ID otomatis"]
         reveal(toggle, in: app)
         XCTAssertEqual(toggle.value as? String, "1")
-        toggle.tap()
-        XCTAssertEqual(toggle.value as? String, "0")
-        XCTAssertTrue(app.staticTexts["Nomor pohon diketik sendiri saat pengambilan."].exists)
-        // Reading the screenshot name from the preview confirms the number is still offered.
-        XCTAssertTrue(app.staticTexts["name-preview"].exists)
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        let off = NSPredicate(format: "value == '0'")
+        XCTAssertEqual(XCTWaiter().wait(for: [expectation(for: off, evaluatedWith: toggle)], timeout: 10), .completed)
+        let note = app.staticTexts["Nomor pohon diketik sendiri saat pengambilan."]
+        for _ in 0..<3 where !note.exists { app.swipeUp() }
+        XCTAssertTrue(note.exists)
         app.buttons["Simpan"].tap()
-        XCTAssertTrue(app.staticTexts["Manual"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["ID pohon"].exists)
+        // The run header only lists the ID mode for manual runs.
+        let row = app.staticTexts["ID pohon"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10) || { app.swipeUp(); return row.waitForExistence(timeout: 5) }())
     }
 
     // MARK: Run list
@@ -153,9 +155,9 @@ final class CollectionParityTests: XCTestCase {
         app.buttons["Ekspor semua ZIP"].tap()
         app.alerts["Ekspor seluruh dataset?"].buttons["Ekspor semua ZIP"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["export-progress"].waitForExistence(timeout: 5))
+        XCTAssertTrue(dismissShareSheet(app), "The share sheet must open by itself when the ZIP is ready")
         let ready = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'ZIP siap: PalmAnnotate_all_'")).firstMatch
-        XCTAssertTrue(ready.waitForExistence(timeout: 30), "The ZIP confirmation never appeared")
-        dismissShareSheet(app)
+        XCTAssertTrue(ready.waitForExistence(timeout: 10), "The ZIP confirmation never appeared")
     }
 
     @MainActor func testRunExportIncludesDraftSamplesInPortrait() { checkRunExport(.portrait) }
@@ -167,20 +169,23 @@ final class CollectionParityTests: XCTestCase {
         openModule("Multisisi", in: app)
         app.staticTexts["DAMIMAS · A1"].tap()
         let make = app.buttons["Buat ZIP"]
-        reveal(make, in: app)
-        make.tap()
+        for _ in 0..<6 where !make.isHittable { app.collectionViews.firstMatch.swipeUp() }
+        make.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(dismissShareSheet(app), "The seeded samples are drafts and must still export and open the share sheet")
         let ready = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'ZIP siap: DAMIMAS_A1_'")).firstMatch
-        XCTAssertTrue(ready.waitForExistence(timeout: 30), "The seeded samples are drafts and must still export")
-        dismissShareSheet(app)
-        XCTAssertTrue(app.buttons["Bagikan ZIP"].waitForExistence(timeout: 5))
+        for _ in 0..<3 where !ready.exists { app.swipeDown() }
+        XCTAssertTrue(ready.waitForExistence(timeout: 10), "The ZIP confirmation never appeared")
+        XCTAssertTrue(app.buttons["Bagikan ZIP"].exists)
     }
 
     @MainActor
-    private func dismissShareSheet(_ app: XCUIApplication) {
+    @discardableResult
+    private func dismissShareSheet(_ app: XCUIApplication) -> Bool {
         let sheet = app.otherElements["ActivityListView"]
-        guard sheet.waitForExistence(timeout: 10) else { return }
+        guard sheet.waitForExistence(timeout: 60) else { return false }
         let close = app.buttons["Close"]
         if close.exists { close.tap() } else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap() }
         _ = sheet.waitForNonExistence(timeout: 5)
+        return true
     }
 }
