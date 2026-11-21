@@ -79,8 +79,13 @@ final class EditorParityTests: XCTestCase {
         attachScreenshot("Panel berat dengan pesan galat")
 
         weight.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5) + "12,5")
+        // The decimal pad has no return key: the button beside Apply puts it away.
+        let hide = app.buttons["measurement-hide-keyboard"]
+        XCTAssertTrue(hide.isHittable)
+        hide.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
         let toggle = app.buttons["measurement-optional-toggle"]
-        for _ in 0..<3 where !toggle.isHittable { app.swipeUp() }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10))
         toggle.tap()
         let circumference = app.textFields["measurement-circumference"]
         XCTAssertTrue(circumference.waitForExistence(timeout: 20), "Opening the optional details shows the fields")
