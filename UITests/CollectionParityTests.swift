@@ -83,7 +83,8 @@ final class CollectionParityTests: XCTestCase {
         let toggle = app.switches["ID otomatis"]
         reveal(toggle, in: app)
         XCTAssertEqual(toggle.value as? String, "1")
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        // The row is a label and a switch; the switch sits at the trailing edge on every width.
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -45, dy: 0)).tap()
         let off = NSPredicate(format: "value == '0'")
         XCTAssertEqual(XCTWaiter().wait(for: [expectation(for: off, evaluatedWith: toggle)], timeout: 10), .completed)
         let note = app.staticTexts["Nomor pohon diketik sendiri saat pengambilan."]
