@@ -1,8 +1,6 @@
 import Foundation
 
 extension Letterbox {
-    /// Scales decoded 8-bit pixels to `resizedWidth` x `resizedHeight` packed RGB bytes.
-    ///
     /// Android scales with `Bitmap.createScaledBitmap(..., filter = true)`. On the pinned Android 14
     /// image, Skia's CPU bitmap sampler produces the result, and this method reproduces it exactly:
     ///
@@ -12,12 +10,6 @@ extension Letterbox {
     /// - Each row of source positions is recomputed from Float every 127 pixels and stepped in fixed
     ///   point in between.
     /// - Taps clamp to the image edge.
-    ///
-    /// - Parameters:
-    ///   - pixels: The decoded image, `width` x `height`, with the red byte at `redOffset` and green
-    ///     and blue following it.
-    ///   - bytesPerPixel: 3 for packed RGB or 4 for RGBX/XRGB.
-    /// - Returns: The scaled bytes, or an empty array when the buffer cannot hold the image.
     public func scaled(pixels: UnsafeRawBufferPointer, bytesPerRow: Int, bytesPerPixel: Int,
                        redOffset: Int = 0) -> [UInt8] {
         guard resizedWidth > 0, resizedHeight > 0, bytesPerPixel >= redOffset + 3,
@@ -62,8 +54,6 @@ extension Letterbox {
         return scaled
     }
 
-    /// Places packed RGB bytes from ``scaled(pixels:bytesPerRow:bytesPerPixel:redOffset:)`` in the
-    /// padded square input as planar floats in 0...1. The padding is grey 114.
     public func tensor(scaled: [UInt8]) -> [Float] {
         let area = size * size
         var tensor = [Float](repeating: 114.0 / 255, count: 3 * area)
@@ -79,7 +69,6 @@ extension Letterbox {
         return tensor
     }
 
-    /// Scales decoded 8-bit pixels and places them in the padded input.
     public func tensor(pixels: UnsafeRawBufferPointer, bytesPerRow: Int, bytesPerPixel: Int,
                        redOffset: Int = 0) -> [Float] {
         tensor(scaled: scaled(pixels: pixels, bytesPerRow: bytesPerRow, bytesPerPixel: bytesPerPixel,

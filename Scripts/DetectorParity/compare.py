@@ -81,7 +81,9 @@ def main(reference, swift, tolerance):
 if __name__ == "__main__":
     arguments = sys.argv[1:]
     tolerance = 1.0
-    if arguments[:1] == ["--tolerance"]:
+    if arguments[:1] == ["--tolerance"] and len(arguments) > 1:
         tolerance = float(arguments[1])
         arguments = arguments[2:]
+    if len(arguments) != 2:
+        sys.exit("Usage: compare.py [--tolerance PIXELS] ANDROID_REPORT IOS_REPORT")
     sys.exit(main(*(read(path) for path in arguments), tolerance))

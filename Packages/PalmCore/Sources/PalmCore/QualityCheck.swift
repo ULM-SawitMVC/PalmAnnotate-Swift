@@ -50,9 +50,6 @@ public enum QualityCheck {
         ], issues: issues)
     }
 
-    /// Bunch Weight compares against the photos taken, so finishing with one photo is not a warning.
-    /// `gps` must already be re-judged for the commit instant; any recorded coordinate counts,
-    /// whatever its freshness.
     public static func analyzeCapture(run: CollectionRun, capturedSides: Int, gps: Provenance) -> Report {
         analyzeCaptureShots(
             capturedSides: capturedSides,
@@ -63,7 +60,6 @@ public enum QualityCheck {
         )
     }
 
-    /// Counts unassigned boxes only for modules that assign ripeness.
     public static func analyzeTree(_ tree: TreeDocument) -> Report {
         var issues: [Issue] = []
         let sides = tree.sides

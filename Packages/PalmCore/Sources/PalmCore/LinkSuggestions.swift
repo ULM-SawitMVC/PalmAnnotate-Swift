@@ -1,4 +1,3 @@
-/// AUTO at or above `autoMin`, CANDIDATE below it.
 public enum LinkCategory: String, Equatable, Sendable {
     case auto, candidate
 
@@ -20,7 +19,6 @@ public struct LinkSuggestion: Identifiable, Equatable, Sendable {
 }
 
 extension TreeDocument {
-    /// Every unconfirmed seam match between adjacent sides, ordered by side pair. `a` is on the lower side.
     public func linkSuggestions(clockwise: Bool = true) -> [LinkSuggestion] {
         guard sides.count > 1 else { return [] }
         let pairs = sides.count == 2 ? [(0, 1)] : sides.indices.map { ($0, ($0 + 1) % sides.count) }
@@ -45,8 +43,6 @@ extension TreeDocument {
         }
     }
 
-    /// A 1-based group number per linked box, numbered by the order each group's first
-    /// link was confirmed, so adding a link never renumbers an existing group.
     public func linkGroups() -> [BoxRef: Int] {
         var parent: [BoxRef: BoxRef] = [:]
         func root(_ ref: BoxRef) -> BoxRef {
@@ -68,9 +64,6 @@ extension TreeDocument {
         return Dictionary(uniqueKeysWithValues: parent.keys.map { ($0, numbers[root($0)] ?? 1) })
     }
 
-    /// New boxes get `det<n>` ids (one past the highest numeric suffix on the
-    /// side), boxes overlapping an existing one by IoU above 0.5 are skipped, and an empty suggestion baseline
-    /// is seeded with the new boxes.
     @discardableResult
     public mutating func mergeDetections(side index: Int, _ found: [Annotation]) -> [BoxRef] {
         guard sides.indices.contains(index) else { return [] }

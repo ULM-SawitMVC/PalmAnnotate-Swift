@@ -72,7 +72,6 @@ public struct Measurements: Codable, Equatable, Sendable {
         Self(weightKg: weightKg, heightCm: heightCm, circumferenceCm: circumferenceCm, notes: notes)
     }
 
-    /// Weight is required, and every given value must be above zero.
     public var validationError: String? {
         guard let weightKg else { return "Berat wajib diisi." }
         guard weightKg.isFinite, weightKg > 0 else { return "Berat harus lebih dari nol." }
@@ -182,9 +181,7 @@ public struct CollectionRun: Codable, Hashable, Identifiable, Sendable {
     public let sideCount: Int
     public let split: String
     public var captureSet: CaptureSet
-    /// `false` when the operator types each tree number at capture time.
     public internal(set) var autoId = true
-    /// The number the next automatic capture will take.
     public internal(set) var nextNumber: Int
 
     public func treeName(number: Int) -> String {
@@ -194,7 +191,6 @@ public struct CollectionRun: Codable, Hashable, Identifiable, Sendable {
 
     public var nextTreeName: String { treeName(number: nextNumber) }
 
-    /// A variety with no usable characters becomes `TREE`.
     public static func sanitizedVariety(_ value: String) -> String {
         let clean = value.uppercased().replacingOccurrences(of: "[^A-Z0-9_]+", with: "_", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
@@ -241,7 +237,6 @@ public struct TreeDocument: Codable, Equatable, Identifiable, Sendable {
     public internal(set) var links: [CrossSideLink] = []
     public internal(set) var revision = 0
     public internal(set) var isComplete = false
-    /// When the sample was last saved; Output JSON uses it as `generated_at`.
     public internal(set) var savedAt: Date
     private var nextLinkID = 0
 

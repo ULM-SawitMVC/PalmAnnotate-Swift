@@ -21,7 +21,6 @@ public struct RunSummary: Identifiable, Equatable, Sendable {
     public let treeCount: Int
     public let photoCount: Int
     public let completeCount: Int
-    /// The newer of the run file's last write (creation, resume, or commit) and the newest tree save.
     public let updatedAt: Date
     public var id: String { run.id }
 }
@@ -130,7 +129,6 @@ public actor PackageStore {
 
     public func run(id: String) throws -> CollectionRun { try read(CollectionRun.self, from: runURL(id)) }
 
-    /// Runs of one module with counts and last-update time, newest update first.
     public func summaries(type: DatasetType) throws -> [RunSummary] {
         let documents = try allTrees()
         return try runs(type: type).map { run in
@@ -143,7 +141,6 @@ public actor PackageStore {
         }.sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    /// Removes the run, its samples, and its draft.
     public func deleteRun(id: String) throws {
         let runFile = runURL(id)
         guard fm.fileExists(atPath: runFile.path) else { throw StoreError.missingItem }
@@ -205,7 +202,6 @@ public actor PackageStore {
                             sha256: sha256(photo.jpeg), jpeg: nil), to: draftMetaURL(runID, side))
     }
 
-    /// Replaces only the detector suggestions of a draft side, and only while its stored JPEG equals `jpeg`.
     public func updateDraftSuggestions(runID: String, side: Int, jpeg: Data, suggestions: [Annotation]) -> Bool {
         guard (try? recoverDraft(runID: runID)) != nil,
               var meta = try? read(DraftSide.self, from: draftMetaURL(runID, side)),
@@ -243,8 +239,6 @@ public actor PackageStore {
         if fm.fileExists(atPath: folder.path) { try fm.removeItem(at: folder) }
     }
 
-    /// Publishes the draft as a sample. `treeNumber` nil numbers it automatically; a number is used as typed
-    /// and must not collide with an existing sample.
     public func commitCapture(runID: String, gps: Provenance, treeNumber: Int? = nil, date: Date = .now) throws -> TreeDocument {
         var run = try run(id: runID)
         let photos = try draftPhotos(runID: runID)
@@ -320,9 +314,6 @@ public actor PackageStore {
         }
     }
 
-    /// Exports every committed sample of one run, or of all runs when `runID` is nil, draft or complete.
-    /// `onProgress` receives files done, files total and the sample being processed. Cancelling the calling
-    /// task stops the export and removes the partial archive.
     public func export(runID: String?, to folder: URL, appVersion: String, date: Date = .now,
                        onProgress: (@Sendable (_ done: Int, _ total: Int, _ treeName: String) -> Void)? = nil) async throws -> URL {
         let documents = try allTrees().filter { runID == nil || $0.run.id == runID }
