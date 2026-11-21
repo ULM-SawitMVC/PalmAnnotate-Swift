@@ -7,6 +7,8 @@ the three v1 modules. The Android reference is commit
 
 ## Implementation
 
+See [AGENTS.md](AGENTS.md) for the current milestone status, remaining parity work, and verification evidence.
+
 The app targets iPhone and iPad on iOS 17 and later. `PalmCore` stores each committed sample as an
 atomically published directory with immutable photos, an optional video, and one editable JSON snapshot.
 An annotation edit atomically replaces that snapshot. ZIP export derives Android artifacts from the saved

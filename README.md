@@ -18,4 +18,4 @@ Di Xcode, pilih skema **PalmAnnotate** dan simulator iPhone atau iPad. Gunakan *
 
 Jalankan tes penyimpanan, ekspor, dan deteksi dengan `swift test --package-path Packages/PalmCore`. Atur `PALM_LEGACY_CORPUS` ke folder `ground_truth/annotations` dari Baseline-SawitMVC untuk menjalankan pemeriksaan korpus lokal.
 
-[Rancangan dan kontrak ekspor](DESIGN.md)
+[Rancangan dan kontrak ekspor](DESIGN.md) · [Status porting dan panduan agen](AGENTS.md)
