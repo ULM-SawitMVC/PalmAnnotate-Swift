@@ -19,11 +19,8 @@ actor Detector {
             runtime = model
         }
 
-        guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw CaptureError.photo }
         let size = model.config.inputSize
-        let box = Letterbox(width: image.width, height: image.height, size: size)
-        guard let scaled = Self.scaledSRGB(image, letterbox: box) else { throw CaptureError.photo }
+        let (box, scaled) = try Self.scaledInput(jpeg: jpeg, size: size)
         var input = box.tensor(scaled: scaled)
         var shape = [Int64](repeating: 0, count: 3)
         var count = 0
@@ -39,6 +36,22 @@ actor Detector {
     }
 
     private static let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+
+    private static func scaledInput(jpeg: Data, size: Int) throws -> (Letterbox, [UInt8]) {
+        guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw CaptureError.photo }
+        if let decoded = JPEGDecoder.decodeRGB(jpeg), decoded.width == image.width, decoded.height == image.height {
+            let box = Letterbox(width: decoded.width, height: decoded.height, size: size)
+            let scaled = decoded.pixels.withUnsafeBytes {
+                box.scaled(pixels: $0, bytesPerRow: decoded.width * 3, bytesPerPixel: 3)
+            }
+            let space = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? srgb
+            if let converted = convertedToSRGB(scaled, letterbox: box, from: space) { return (box, converted) }
+        }
+        let box = Letterbox(width: image.width, height: image.height, size: size)
+        guard let scaled = scaledSRGB(image, letterbox: box) else { throw CaptureError.photo }
+        return (box, scaled)
+    }
 
     private static func scaledSRGB(_ image: CGImage, letterbox: Letterbox) -> [UInt8]? {
         let order = image.bitmapInfo.intersection(.byteOrderMask)
@@ -59,6 +72,10 @@ actor Detector {
             letterbox.scaled(pixels: $0, bytesPerRow: image.bytesPerRow, bytesPerPixel: layout.bytes,
                              redOffset: layout.red)
         }
+        return convertedToSRGB(scaled, letterbox: letterbox, from: space)
+    }
+
+    private static func convertedToSRGB(_ scaled: [UInt8], letterbox: Letterbox, from space: CGColorSpace) -> [UInt8]? {
         guard scaled.count == letterbox.resizedWidth * letterbox.resizedHeight * 3 else { return nil }
         var padded = Data(count: scaled.count / 3 * 4)
         padded.withUnsafeMutableBytes { storage in
