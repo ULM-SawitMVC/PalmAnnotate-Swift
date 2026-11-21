@@ -5,6 +5,19 @@ Compatibility targets the Android RGB export contracts and the Baseline-SawitMVC
 the three v1 modules. The Android reference is commit
 [a52a5cb](https://github.com/ULM-SawitMVC/PalmAnnotate-Kotlin/tree/a52a5cb8e0ab5d228a01a624099f1cd2182f4221).
 
+## Implementation
+
+The app targets iPhone and iPad on iOS 17 and later. `PalmCore` stores each committed sample as an
+atomically published directory with immutable photos, an optional video, and one editable JSON snapshot.
+An annotation edit atomically replaces that snapshot. ZIP export derives Android artifacts from the saved
+revision, then compresses a staged copy outside the store actor. The draft identity allows the store to
+recognize a capture published before its draft was cleaned up. The sections below record the original design
+sketch and parity targets.
+
+The detector links the iOS XCFramework in Microsoft's NuGet package for ONNX Runtime 1.20.1. The app
+bundles the model and configuration from the pinned Android commit. The setup script verifies the runtime,
+model, and configuration checksums.
+
 ## Scope v1
 
 | In | Out (v1) |

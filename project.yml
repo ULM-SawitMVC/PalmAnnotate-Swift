@@ -1,15 +1,29 @@
 name: PalmAnnotate
+packages:
+  PalmCore:
+    path: Packages/PalmCore
 targets:
   PalmAnnotate:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
-    sources: [App]
+    sources:
+      - App
+      - path: Vendor/ONNX-Runtime-LICENSE
+        buildPhase: resources
+    dependencies:
+      - package: PalmCore
+      - framework: Vendor/onnxruntime.xcframework
+        embed: false
+      - sdk: libc++.tbd
+      - sdk: CoreML.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.sawitulm.palmannotate.ios
-        TARGETED_DEVICE_FAMILY: "2"
+        TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "6.0"
+        SWIFT_OBJC_BRIDGING_HEADER: App/Device/OrtBridge.h
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
     info:
@@ -18,6 +32,33 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        NSCameraUsageDescription: Kamera digunakan untuk mengambil foto dan video sampel sawit.
+        NSMicrophoneUsageDescription: Mikrofon digunakan untuk merekam audio pada video multisisi.
+        NSLocationWhenInUseUsageDescription: Lokasi dicatat sebagai bagian dari metadata sampel.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+  PalmAnnotateUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [UITests]
+    dependencies:
+      - target: PalmAnnotate
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sawitulm.palmannotate.ios.uitests
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+schemes:
+  PalmAnnotate:
+    build:
+      targets:
+        PalmAnnotate: all
+    test:
+      targets: [PalmAnnotateUITests]

@@ -1,0 +1,325 @@
+import CryptoKit
+import Foundation
+import ZIPFoundation
+
+public struct CapturedPhoto: Codable, Sendable {
+    public let jpeg: Data
+    public let width: Int
+    public let height: Int
+    public let suggestions: [Annotation]
+
+    public init(jpeg: Data, width: Int, height: Int, suggestions: [Annotation] = []) {
+        self.jpeg = jpeg
+        self.width = width
+        self.height = height
+        self.suggestions = suggestions
+    }
+}
+
+public enum StoreError: LocalizedError {
+    case invalidRun, invalidCapture, videoRequired, staleRevision, missingItem, emptyExport
+    case completion(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidRun: "Isi varietas dan blok yang valid, lalu pilih jumlah foto."
+        case .invalidCapture: "Jumlah foto atau data JPEG belum valid."
+        case .videoRequired: "Sampel ini membutuhkan rekaman video dengan audio."
+        case .staleRevision: "Sampel sudah berubah. Buka kembali sampel untuk mengedit."
+        case .missingItem: "Sesi atau sampel sudah tidak tersedia."
+        case .emptyExport: "Belum ada sampel selesai untuk diekspor."
+        case .completion(let reason): reason
+        }
+    }
+}
+
+public actor PackageStore {
+    private let root: URL
+    private let installID: String
+    private let fm = FileManager.default
+
+    public init(root: URL) throws {
+        self.root = root
+        for directory in ["runs", "trees", "drafts", "staging"] {
+            try FileManager.default.createDirectory(at: root.appendingPathComponent(directory), withIntermediateDirectories: true)
+        }
+        let identity = root.appendingPathComponent("install-id")
+        if FileManager.default.fileExists(atPath: identity.path) {
+            installID = try String(contentsOf: identity, encoding: .utf8)
+        } else {
+            let value = UUID().uuidString.lowercased()
+            try Data(value.utf8).write(to: identity, options: .atomic)
+            installID = value
+        }
+        let staging = root.appendingPathComponent("staging")
+        for item in try FileManager.default.contentsOfDirectory(at: staging, includingPropertiesForKeys: nil) {
+            try FileManager.default.removeItem(at: item)
+        }
+    }
+
+    public var deviceToken: String {
+        let alphabet = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+        return String(SHA256.hash(data: Data(installID.utf8)).prefix(6).map { alphabet[Int($0) % alphabet.count] })
+    }
+
+    public func runs(type: DatasetType) throws -> [CollectionRun] {
+        try entries("runs").filter { $0.pathExtension == "json" }.map { try read(CollectionRun.self, from: $0) }
+            .filter { $0.type == type }.sorted { ($0.variety, $0.block) < ($1.variety, $1.block) }
+    }
+
+    public func createRun(type: DatasetType, variety: String, block: String, operatorName: String,
+                          sideCount: Int, split: String, tokenized: Bool) throws -> CollectionRun {
+        let variety = CollectionRun.sanitizedVariety(variety)
+        let block = CollectionRun.sanitizedBlock(block)
+        let operatorName = operatorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !variety.isEmpty, !block.isEmpty, !["BW", "VID"].contains(block), type.sideOptions.contains(sideCount),
+              ["field", "train", "val", "test"].contains(split) else { throw StoreError.invalidRun }
+        let id = sha256(Data("\(type.rawValue)|\(variety)|\(block)".utf8))
+        let url = runURL(id)
+        if fm.fileExists(atPath: url.path) {
+            var run = try read(CollectionRun.self, from: url)
+            if !operatorName.isEmpty { run.operatorName = operatorName }
+            if tokenized, run.captureSet.nameToken.isEmpty, run.nextNumber == 1,
+               try trees(runID: id).isEmpty, try draftPhotos(runID: id).isEmpty {
+                run.captureSet.nameToken = deviceToken
+            }
+            try write(run, to: url)
+            return run
+        }
+        let captureSet = CaptureSet(captureSetId: UUID().uuidString.lowercased(),
+                                    deviceToken: deviceToken, nameToken: tokenized ? deviceToken : "")
+        let run = CollectionRun(id: id, type: type, variety: variety, block: block, operatorName: operatorName,
+                                sideCount: sideCount, split: split, captureSet: captureSet, nextNumber: 1)
+        try write(run, to: url)
+        return run
+    }
+
+    public func run(id: String) throws -> CollectionRun { try read(CollectionRun.self, from: runURL(id)) }
+
+    public func trees(runID: String) throws -> [TreeDocument] {
+        try allTrees().filter { $0.run.id == runID }.sorted { $0.number > $1.number }
+    }
+
+    public func tree(id: String) throws -> TreeDocument {
+        try read(TreeDocument.self, from: treeRoot(id).appendingPathComponent("document.json"))
+    }
+
+    public func photoURL(treeID: String, side: Int) -> URL { treeRoot(treeID).appendingPathComponent("\(side).jpg") }
+    public func videoURL(treeID: String) -> URL { treeRoot(treeID).appendingPathComponent("recording.mp4") }
+
+    public func draftPhotos(runID: String) throws -> [CapturedPhoto] {
+        try recoverDraft(runID: runID)
+        let folder = draftRoot(runID)
+        guard fm.fileExists(atPath: folder.path) else { return [] }
+        let files = try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .filter { Int($0.deletingPathExtension().lastPathComponent) != nil }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        return try files.enumerated().map { index, url in
+            guard url.lastPathComponent == "\(index).json" else { throw StoreError.invalidCapture }
+            return try read(CapturedPhoto.self, from: url)
+        }
+    }
+
+    public func draftVideo(runID: String) -> URL? {
+        let url = draftRoot(runID).appendingPathComponent("recording.mp4")
+        return fm.fileExists(atPath: url.path) ? url : nil
+    }
+
+    public func saveDraftPhoto(_ photo: CapturedPhoto, runID: String, side: Int) throws {
+        let run = try run(id: runID)
+        guard (0..<run.sideCount).contains(side), photo.width > 0, photo.height > 0, !photo.jpeg.isEmpty,
+              side <= (try draftPhotos(runID: runID).count) else { throw StoreError.invalidCapture }
+        let folder = draftRoot(runID)
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let identity = folder.appendingPathComponent("identity")
+        if !fm.fileExists(atPath: identity.path) {
+            try Data(UUID().uuidString.utf8).write(to: identity, options: .atomic)
+        }
+        try write(photo, to: folder.appendingPathComponent("\(side).json"))
+    }
+
+    public func saveDraftVideo(from source: URL, runID: String) throws {
+        let run = try run(id: runID)
+        guard run.type.requiresVideo, try draftPhotos(runID: runID).count == run.sideCount else {
+            throw StoreError.invalidCapture
+        }
+        let target = draftRoot(runID).appendingPathComponent("recording.mp4")
+        let staging = target.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".incoming")
+        defer { try? fm.removeItem(at: staging) }
+        try fm.copyItem(at: source, to: staging)
+        if fm.fileExists(atPath: target.path) {
+            _ = try fm.replaceItemAt(target, withItemAt: staging)
+        } else {
+            try fm.moveItem(at: staging, to: target)
+        }
+    }
+
+    public func discardDraft(runID: String) throws {
+        let folder = draftRoot(runID)
+        if fm.fileExists(atPath: folder.path) { try fm.removeItem(at: folder) }
+    }
+
+    public func commitCapture(runID: String, gps: Provenance, date: Date = .now) throws -> TreeDocument {
+        var run = try run(id: runID)
+        let photos = try draftPhotos(runID: runID)
+        let minimum = run.type == .bunchWeight ? 1 : run.sideCount
+        guard (minimum...run.sideCount).contains(photos.count) else { throw StoreError.invalidCapture }
+        let videoURL = draftVideo(runID: run.id)
+        if run.type.requiresVideo && videoURL == nil { throw StoreError.videoRequired }
+
+        var number = run.nextNumber
+        while fm.fileExists(atPath: treeRoot(run.treeName(number: number)).path) { number += 1 }
+        let treeName = run.treeName(number: number)
+        let staging = root.appendingPathComponent("staging").appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: staging) }
+        var video: VideoArtifact?
+        if let videoURL {
+            let (size, hash) = try fileDigest(videoURL)
+            guard size > 0 else { throw StoreError.videoRequired }
+            video = VideoArtifact(filename: treeName + ".mp4", sizeBytes: size, sha256: hash)
+            try fm.copyItem(at: videoURL, to: staging.appendingPathComponent("recording.mp4"))
+        }
+        let sides = try photos.enumerated().map { index, photo in
+            try photo.jpeg.write(to: staging.appendingPathComponent("\(index).jpg"))
+            return CaptureSide(id: index, width: photo.width, height: photo.height,
+                               sha256: sha256(photo.jpeg), suggestions: photo.suggestions)
+        }
+        let draftID = try String(contentsOf: draftRoot(runID).appendingPathComponent("identity"), encoding: .utf8)
+        var document = TreeDocument(id: treeName, run: run, number: number, capturedAt: date,
+                                    captureDate: ExportCodec.captureDate(date), captureDraftID: draftID,
+                                    gps: gps.atCommit(date), video: video, sides: sides, savedAt: date)
+        document.isComplete = run.type.requiresVideo
+        try write(document, to: staging.appendingPathComponent("document.json"))
+
+        // Reserve the number before publishing the sample. A failed publish can leave a gap.
+        run.nextNumber = number + 1
+        try write(run, to: runURL(run.id))
+        try fm.moveItem(at: staging, to: treeRoot(treeName))
+        try? discardDraft(runID: runID)
+        return document
+    }
+
+    public func save(_ document: TreeDocument, markComplete: Bool = false, date: Date = .now) throws -> TreeDocument {
+        let previous = try tree(id: document.id)
+        guard previous.revision == document.revision else { throw StoreError.staleRevision }
+        if markComplete, let error = document.completionError { throw StoreError.completion(error) }
+        var saved = document
+        saved.revision += 1
+        saved.savedAt = date
+        saved.isComplete = document.run.type == .bunchWeight ? document.completionError == nil : previous.isComplete || markComplete
+        try write(saved, to: treeRoot(document.id).appendingPathComponent("document.json"))
+        return saved
+    }
+
+    public func deleteTree(id: String) throws {
+        let target = treeRoot(id)
+        guard fm.fileExists(atPath: target.path) else { throw StoreError.missingItem }
+        let tombstone = root.appendingPathComponent("staging").appendingPathComponent(UUID().uuidString)
+        try fm.moveItem(at: target, to: tombstone)
+        try? fm.removeItem(at: tombstone)
+    }
+
+    public func export(runID: String?, to folder: URL, appVersion: String, date: Date = .now) async throws -> URL {
+        let documents = try allTrees().filter { $0.isComplete && (runID == nil || $0.run.id == runID) }
+        guard !documents.isEmpty else { throw StoreError.emptyExport }
+        let working = folder.appendingPathComponent(UUID().uuidString)
+        let contents = working.appendingPathComponent("dataset")
+        try fm.createDirectory(at: contents, withIntermediateDirectories: true)
+        do {
+            try prepareExport(documents, contents: contents, appVersion: appVersion, date: date)
+        } catch {
+            try? fm.removeItem(at: working)
+            throw error
+        }
+        let runs = Set(documents.map { $0.run.id })
+        let first = documents[0].run
+        let base = runs.count == 1 ? "\(first.variety)_\(first.block)_\(first.captureSet.deviceToken)" : "PalmAnnotate"
+        let target = working.appendingPathComponent(base + "_" + ExportCodec.iso(date).replacingOccurrences(of: ":", with: "") + ".zip")
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                try FileManager.default.zipItem(at: contents, to: target, shouldKeepParent: false, compressionMethod: .deflate)
+                try FileManager.default.removeItem(at: contents)
+            }.value
+            return target
+        } catch {
+            try? fm.removeItem(at: working)
+            throw error
+        }
+    }
+
+    private func prepareExport(_ trees: [TreeDocument], contents: URL, appVersion: String, date: Date) throws {
+        for folder in ["images", "labels", "json", "metadata", "manifests", "video"] {
+            try fm.createDirectory(at: contents.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
+        var entries: [[String: String]] = []
+        for tree in trees.sorted(by: { $0.id < $1.id }) {
+            let labels = tree.sides.map { ExportCodec.labels($0, type: tree.run.type) }
+            let output = try ExportCodec.output(tree, generatedAt: tree.savedAt)
+            let metadata = try ExportCodec.metadata(tree, generatedAt: tree.capturedAt)
+            let manifest = try ExportCodec.manifest(tree, output: output, metadata: metadata, labels: labels)
+            for (index, side) in tree.sides.enumerated() {
+                let stem = "\(tree.id)_\(side.id + 1)"
+                try fm.linkItem(at: photoURL(treeID: tree.id, side: side.id), to: contents.appendingPathComponent("images/\(stem).jpg"))
+                try labels[index].write(to: contents.appendingPathComponent("labels/\(stem).txt"))
+            }
+            try output.write(to: contents.appendingPathComponent("json/\(tree.id).json"))
+            try metadata.write(to: contents.appendingPathComponent("metadata/\(tree.id).json"))
+            try manifest.write(to: contents.appendingPathComponent("manifests/\(tree.id).json"))
+            if let video = tree.video {
+                try fm.linkItem(at: videoURL(treeID: tree.id), to: contents.appendingPathComponent("video/\(video.filename)"))
+            }
+            entries.append(["treeName": tree.id, "captureSetId": tree.run.captureSet.captureSetId,
+                            "deviceToken": tree.run.captureSet.deviceToken, "contentDigest": sha256(manifest)])
+        }
+        let setIDs = Set(trees.map { $0.run.captureSet.captureSetId })
+        let nameTokens = Set(trees.map { $0.run.captureSet.nameToken })
+        try ExportCodec.json([
+            "schema": 1, "captureSetId": setIDs.count == 1 ? setIDs.first ?? "" : "",
+            "deviceToken": deviceToken, "nameToken": nameTokens.count == 1 ? nameTokens.first ?? "" : "",
+            "appVersion": appVersion, "generatedAt": ExportCodec.iso(date), "treeCount": entries.count,
+            "mergeRule": "Merge only when a repeated treeName has the same captureSetId and contentDigest.",
+            "trees": entries
+        ]).write(to: contents.appendingPathComponent("capture_set.json"))
+    }
+
+    private func allTrees() throws -> [TreeDocument] {
+        try entries("trees").map { try read(TreeDocument.self, from: $0.appendingPathComponent("document.json")) }
+    }
+    private func recoverDraft(runID: String) throws {
+        let identity = draftRoot(runID).appendingPathComponent("identity")
+        guard fm.fileExists(atPath: identity.path) else { return }
+        let draftID = try String(contentsOf: identity, encoding: .utf8)
+        let run = try run(id: runID)
+        guard run.nextNumber > 1 else { return }
+        let lastName = run.treeName(number: run.nextNumber - 1)
+        if fm.fileExists(atPath: treeRoot(lastName).path), try tree(id: lastName).captureDraftID == draftID {
+            try discardDraft(runID: runID)
+        }
+    }
+    private func entries(_ name: String) throws -> [URL] {
+        try fm.contentsOfDirectory(at: root.appendingPathComponent(name), includingPropertiesForKeys: nil, options: .skipsHiddenFiles)
+    }
+    private func runURL(_ id: String) -> URL { root.appendingPathComponent("runs").appendingPathComponent(id + ".json") }
+    private func treeRoot(_ id: String) -> URL { root.appendingPathComponent("trees").appendingPathComponent(id) }
+    private func draftRoot(_ id: String) -> URL { root.appendingPathComponent("drafts").appendingPathComponent(id) }
+
+    private func read<T: Decodable>(_ type: T.Type, from url: URL) throws -> T {
+        try JSONDecoder().decode(type, from: Data(contentsOf: url))
+    }
+    private func write<T: Encodable>(_ value: T, to url: URL) throws {
+        try JSONEncoder().encode(value).write(to: url, options: .atomic)
+    }
+
+    private func fileDigest(_ url: URL) throws -> (UInt64, String) {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hash = SHA256()
+        var count: UInt64 = 0
+        while let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty {
+            count += UInt64(chunk.count)
+            hash.update(data: chunk)
+        }
+        return (count, hash.finalize().map { String(format: "%02x", $0) }.joined())
+    }
+}
