@@ -54,6 +54,7 @@ final class ModuleNavigationTests: XCTestCase {
         weight.tap()
         weight.typeText("12")
         XCTAssertTrue(app.buttons["Terapkan"].isHittable)
+        XCTAssertTrue(app.textFields["Lingkar (cm, opsional)"].isHittable)
         attachScreenshot(named: "Ukuran tandan dengan papan ketik")
         app.buttons["Terapkan"].tap()
         let results = app.buttons["Hasil"]

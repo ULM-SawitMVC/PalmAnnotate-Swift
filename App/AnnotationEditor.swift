@@ -393,6 +393,7 @@ private struct MeasurementForm: View {
     let value: Measurements
     let onSave: (Measurements) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var weight = ""
     @State private var height = ""
     @State private var circumference = ""
@@ -401,13 +402,7 @@ private struct MeasurementForm: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                if let validation { Text(validation).foregroundStyle(.red) }
-                TextField("Berat (kg)", text: $weight).keyboardType(.decimalPad)
-                TextField("Tinggi (cm, opsional)", text: $height).keyboardType(.decimalPad)
-                TextField("Lingkar (cm, opsional)", text: $circumference).keyboardType(.decimalPad)
-                TextField("Catatan (opsional)", text: $notes, axis: .vertical)
-            }
+            form
             .navigationTitle("Ukuran tandan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -421,6 +416,54 @@ private struct MeasurementForm: View {
                 notes = value.notes ?? ""
             }
         }
+    }
+
+    @ViewBuilder
+    private var form: some View {
+        if verticalSizeClass == .compact {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let validation { Text(validation).foregroundStyle(.red) }
+                    Grid(horizontalSpacing: 12, verticalSpacing: 8) {
+                        GridRow {
+                            weightField
+                            heightField
+                        }
+                        GridRow {
+                            circumferenceField
+                            notesField
+                        }
+                    }
+                    .textFieldStyle(.roundedBorder)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+            }
+        } else {
+            Form {
+                if let validation { Text(validation).foregroundStyle(.red) }
+                weightField
+                heightField
+                circumferenceField
+                notesField
+            }
+        }
+    }
+
+    private var weightField: some View {
+        TextField("Berat (kg)", text: $weight).keyboardType(.decimalPad)
+    }
+
+    private var heightField: some View {
+        TextField("Tinggi (cm, opsional)", text: $height).keyboardType(.decimalPad)
+    }
+
+    private var circumferenceField: some View {
+        TextField("Lingkar (cm, opsional)", text: $circumference).keyboardType(.decimalPad)
+    }
+
+    private var notesField: some View {
+        TextField("Catatan (opsional)", text: $notes, axis: .vertical)
     }
 
     private func apply() {
