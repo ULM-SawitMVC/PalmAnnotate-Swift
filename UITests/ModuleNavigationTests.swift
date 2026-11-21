@@ -37,8 +37,12 @@ final class ModuleNavigationTests: XCTestCase {
         XCTAssertTrue(app.buttons["Pilih foto simulator"].waitForExistence(timeout: 10))
         attachScreenshot(named: "Pengambilan foto")
         app.buttons["Tutup"].tap()
+        XCTAssertTrue(app.buttons["Pilih foto simulator"].waitForNonExistence(timeout: 10))
 
-        app.staticTexts["DAMIMAS_QA_BW_0001"].tap()
+        // A List creates rows only once they scroll into view; landscape starts with the session header.
+        let sample = app.staticTexts["DAMIMAS_QA_BW_0001"]
+        for _ in 0..<5 where !sample.exists || !sample.isHittable { app.collectionViews.firstMatch.swipeUp() }
+        sample.tap()
         let photo = app.descendants(matching: .any)["annotation-photo"].firstMatch
         XCTAssertTrue(photo.waitForExistence(timeout: 10))
         photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
