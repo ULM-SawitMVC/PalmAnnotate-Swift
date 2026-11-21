@@ -92,7 +92,9 @@ final class ModuleNavigationTests: XCTestCase {
 
             let navigation = app.navigationBars[module]
             XCTAssertTrue(navigation.waitForExistence(timeout: 5))
-            XCTAssertTrue(app.staticTexts["Belum ada sesi"].isHittable)
+            // Berat Tandan names its sessions "sesi berat", as Kotlin's weight list does.
+            let empty = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Belum ada sesi")).firstMatch
+            XCTAssertTrue(empty.isHittable)
             attachScreenshot(named: module)
             navigation.buttons.firstMatch.tap()
         }
