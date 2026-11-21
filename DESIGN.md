@@ -249,11 +249,22 @@ accepting a validated draft. Measure save latency on device.
 | 4 | Carousel + AnnotationCanvas + measurement panel + links + dedup review | Kotlin carousel invariants re-checked on iPad |
 | 5 | ONNX detection | suite 4 green |
 | 6 | Multiside video | record/stop/retake rules on device |
-| 7 | Results, CSV/Identity export, Save to Files, full item-life checklist on device | CLAUDE.md rule 7 checklist passes per module |
+| 7 | Results, CSV/Identity export, Save to Files, full item lifecycle on device | Device acceptance checklist passes per module |
 
 ## Device acceptance
 
-The project targets iPadOS 17 or later in landscape. The simulator covers navigation, small fixture imports in
-unit tests, and export validation. Use a physical iPad for camera and microphone permissions, simultaneous
-photo and video capture, interruptions, GPS freshness, sustained detector performance, and the Files share flow.
-Check the deployment target on an iPad running the oldest supported version.
+Use an installed build on an iPhone in portrait and landscape and on an iPad in landscape. Include a
+device running the oldest supported OS when available. Record the device model, OS, build SHA, orientation,
+module, side count, and pass/fail result. Use test runs so that draft recovery and deletion can be exercised
+without affecting field data.
+
+| Scope | Physical check | Expected result |
+|---|---|---|
+| All modules | Create and reopen a session. Deny camera access, grant it in Settings, and reopen capture. Capture in the supported orientations. | The capture screen explains the denial. After granting access, the preview and saved JPEG orientation agree. |
+| Multisisi 4/8 | Capture four and eight sides in separate runs. Close and reopen a partial draft, review and retake a side, and discard a test draft. | Reopening restores the original photos in order. A retake replaces only its side. An incomplete multiside set cannot be committed. |
+| GPS | Save with a fresh fix, wait until it expires before another commit, and repeat with permission denied. Inspect the exported metadata. | Fresh and stale fixes carry the matching status. Stale fixes retain their coordinates. A denied fix is recorded without coordinates. |
+| Multisisi and Berat Tandan | Trigger ONNX on a sequence of photos, then draw, move, resize, and delete a box. Review and edit cross-side links. Reopen after saving. | Detections and edits display on the correct side. Saved geometry and links persist. Record sustained inference timings and any capture delay. |
+| Berat Tandan 1/2 | Commit one photo and two photos in separate samples. Check the weight field and validation with the keyboard open. Apply a valid weight, link and unlink boxes, and reopen the sample. | One photo can finish capture. Completion requires a positive weight for every bunch. Measurements persist and blank optional values remain empty in export. |
+| Multisisi Video 4/8 | Deny microphone access, then grant it. Record while taking four and eight stills in separate runs. Attempt an early Stop, then Stop after all sides, retake one still, save, reopen, and play the recording. | An early Stop is gated. The saved MP4 has audible sound and covers the still capture sequence. The final retake replaces one still and preserves the MP4. |
+| Video interruption | Background the app or interrupt an active recording before the final side, then try recording again. | The interrupted take cannot be committed. Starting a new take clears the earlier draft photos. The new take can be finished and reopened. |
+| Export and deletion | Share the completed session ZIP with Save to Files and reopen it from Files. Share the available per-sample artifacts from an annotated sample. Delete a test sample and reopen the session. | The ZIP opens with the expected media and metadata, and any included MP4 plays with sound. The deleted sample stays absent from the session and a newly exported ZIP. |
