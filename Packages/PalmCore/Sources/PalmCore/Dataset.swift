@@ -193,9 +193,11 @@ public struct CollectionRun: Codable, Hashable, Identifiable, Sendable {
 
     public var nextTreeName: String { treeName(number: nextNumber) }
 
+    /// Kotlin `CaptureSetIdentity.sanitizeVariety`: a variety with no usable characters becomes `TREE`.
     public static func sanitizedVariety(_ value: String) -> String {
-        value.uppercased().replacingOccurrences(of: "[^A-Z0-9_]+", with: "_", options: .regularExpression)
+        let clean = value.uppercased().replacingOccurrences(of: "[^A-Z0-9_]+", with: "_", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        return clean.isEmpty ? "TREE" : clean
     }
 
     public static func sanitizedBlock(_ value: String) -> String {

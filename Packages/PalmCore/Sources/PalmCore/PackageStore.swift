@@ -103,10 +103,12 @@ public actor PackageStore {
 
     public func createRun(type: DatasetType, variety: String, block: String, operatorName: String,
                           sideCount: Int, split: String, tokenized: Bool, autoId: Bool = true) throws -> CollectionRun {
+        // The form requires a variety; one without usable characters falls back to TREE as in Kotlin.
+        guard !variety.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw StoreError.invalidRun }
         let variety = CollectionRun.sanitizedVariety(variety)
         let block = CollectionRun.sanitizedBlock(block)
         let operatorName = operatorName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !variety.isEmpty, !block.isEmpty, !["BW", "VID"].contains(block),
+        guard !block.isEmpty, !["BW", "VID"].contains(block),
               type.sideOptions.contains(sideCount) || (type == .bunchWeight && sideCount == 1),
               ["field", "train", "val", "test"].contains(split) else { throw StoreError.invalidRun }
         let id = sha256(Data("\(type.rawValue)|\(variety)|\(block)".utf8))

@@ -17,15 +17,19 @@ private struct PalmAnnotateRoot: View {
     var body: some View {
         NavigationStack {
             if let store {
-                List(DatasetType.allCases) { module in
-                    NavigationLink {
-                        RunList(type: module, store: store)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Label(module.title, systemImage: module.icon).font(.headline)
-                            Text(module.detail).font(.subheadline).foregroundStyle(.secondary)
+                List {
+                    Section("Pilih alur pengumpulan data") {
+                        ForEach(DatasetType.allCases) { module in
+                            NavigationLink {
+                                RunList(type: module, store: store)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Label(module.title, systemImage: module.icon).font(.headline)
+                                    Text(module.detail).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 8)
+                            }
                         }
-                        .padding(.vertical, 8)
                     }
                 }
                 .navigationTitle("PalmAnnotate")
@@ -79,7 +83,9 @@ private struct PalmAnnotateRoot: View {
 
     private var versionLabel: String {
         let info = Bundle.main.infoDictionary
-        return "v\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
+        let version = "v\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
+        guard let revision = info?["PalmSourceRevision"] as? String else { return version }
+        return "\(version) · \(revision)"
     }
 
     #if DEBUG

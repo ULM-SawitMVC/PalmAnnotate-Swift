@@ -33,6 +33,21 @@ import ZIPFoundation
         func add(_ done: Int, _ total: Int, _ name: String) { lock.withLock { values.append((done, total, name)) } }
     }
 
+    @Test func varietyWithoutUsableCharactersBecomesTreeButBlankIsRefused() async throws {
+        #expect(CollectionRun.sanitizedVariety("  dami-mas ") == "DAMI_MAS")
+        #expect(CollectionRun.sanitizedVariety("!!") == "TREE")
+        try await withStore { store, _ in
+            let run = try await store.createRun(type: .multiside, variety: "#?", block: "a1", operatorName: "",
+                                                sideCount: 4, split: "field", tokenized: false)
+            #expect(run.variety == "TREE")
+            #expect(run.treeName(number: 1) == "TREE_A1_0001")
+            await #expect(throws: StoreError.self) {
+                try await store.createRun(type: .multiside, variety: "   ", block: "A1", operatorName: "",
+                                          sideCount: 4, split: "field", tokenized: false)
+            }
+        }
+    }
+
     @Test func weightRunsOfferTwoPhotosButLegacySingleSlotRunsStillWork() async throws {
         #expect(DatasetType.bunchWeight.sideOptions == [2])
         try await withStore { store, _ in

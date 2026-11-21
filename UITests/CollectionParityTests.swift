@@ -38,8 +38,8 @@ final class CollectionParityTests: XCTestCase {
         let version = app.staticTexts["hub-version"]
         XCTAssertTrue(version.waitForExistence(timeout: 30))
         XCTAssertTrue(version.isHittable)
-        XCTAssertTrue(version.label.hasPrefix("v0.1.0 ("), version.label)
-        XCTAssertTrue(version.label.hasSuffix(")"))
+        // Version, build, and the source revision stamped at build time.
+        XCTAssertNotNil(version.label.range(of: #"^v0\.1\.0 \(\d+\) · [0-9a-f]{8}(-dirty)?$"#, options: .regularExpression), version.label)
         XCTAssertEqual(app.staticTexts["hub-data-hint"].label, "Data hanya tersimpan di aplikasi ini. Ekspor ZIP untuk memindahkan data.")
         XCTAssertTrue(app.staticTexts["hub-data-hint"].isHittable)
     }

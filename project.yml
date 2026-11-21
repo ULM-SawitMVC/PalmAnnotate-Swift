@@ -28,6 +28,19 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    postBuildScripts:
+      # Device acceptance records the build SHA, so the hub footer shows it.
+      - name: Stamp source revision
+        basedOnDependencyAnalysis: false
+        # Declaring the processed plist orders this script after Info.plist processing.
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        script: |
+          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          revision=$(git -C "$SRCROOT" rev-parse --short=8 HEAD 2>/dev/null || echo unknown)
+          git -C "$SRCROOT" diff --quiet HEAD -- 2>/dev/null || revision="$revision-dirty"
+          /usr/libexec/PlistBuddy -c "Delete :PalmSourceRevision" "$plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :PalmSourceRevision string $revision" "$plist"
     info:
       path: App/Info.plist
       properties:

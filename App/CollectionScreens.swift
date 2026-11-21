@@ -300,6 +300,7 @@ private struct NewRun: View {
     @State private var saving = false
 
     private var cleanVariety: String { CollectionRun.sanitizedVariety(variety) }
+    private var varietyBlank: Bool { variety.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var cleanBlock: String { CollectionRun.sanitizedBlock(block) }
     private var match: CollectionRun? { existing.first { $0.variety == cleanVariety && $0.block == cleanBlock } }
     private var blockError: String? {
@@ -364,7 +365,7 @@ private struct NewRun: View {
                         Text("Penamaan sudah tetap untuk sesi ini.").font(.footnote).foregroundStyle(.secondary)
                     }
                 }
-                if !cleanVariety.isEmpty && !cleanBlock.isEmpty {
+                if !varietyBlank && !cleanBlock.isEmpty {
                     Section {
                         Text("\(match == nil ? (type == .bunchWeight ? "Sampel" : "Pohon") : "Berikutnya"): \(preview)")
                             .font(.callout.bold().monospaced())
@@ -378,7 +379,7 @@ private struct NewRun: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Batal") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Simpan", action: save)
-                        .disabled(saving || cleanVariety.isEmpty || cleanBlock.isEmpty || blockError != nil)
+                        .disabled(saving || varietyBlank || cleanBlock.isEmpty || blockError != nil)
                 }
             }
             .task {
