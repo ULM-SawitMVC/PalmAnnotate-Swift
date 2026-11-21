@@ -1,5 +1,3 @@
-/* Hand-written for PalmCore. Replaces the CMake-generated jconfigint.h of libjpeg-turbo 3.2.1.
- * Targets Apple arm64 and x86_64 (iOS, macOS, simulators) with clang. No SIMD. */
 #define BUILD  "palmcore"
 #define HIDDEN  __attribute__((visibility("hidden")))
 

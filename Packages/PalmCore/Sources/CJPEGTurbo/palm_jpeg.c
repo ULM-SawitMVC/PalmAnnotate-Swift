@@ -18,7 +18,6 @@ static void palm_error_exit(j_common_ptr cinfo) {
 
 static void palm_output_message(j_common_ptr cinfo) { (void)cinfo; }
 
-/* Largest accepted decoded size. libjpeg allows 65500 x 65500, which would need 12 GB of RGB. */
 #define PALM_JPEG_MAX_BYTES ((size_t)1 << 30)
 
 int palm_jpeg_decode_rgb(const uint8_t *data, size_t length, int *width, int *height, uint8_t **pixels) {
@@ -60,8 +59,7 @@ int palm_jpeg_decode_rgb(const uint8_t *data, size_t length, int *width, int *he
         return 5;
     }
 
-    /* Everything else keeps the libjpeg defaults: JDCT_ISLOW, fancy upsampling, block smoothing. */
-    cinfo.out_color_space = JCS_RGB;
+        cinfo.out_color_space = JCS_RGB;
     buffer = malloc(rowBytes * cinfo.image_height);
     if (buffer == NULL) {
         jpeg_destroy_decompress(&cinfo);

@@ -1,7 +1,4 @@
 #!/bin/sh
-# Checks that PalmCore's JPEGDecoder returns the same bytes as libjpeg-turbo's djpeg for every JPEG in
-# a directory. Field photos stay outside Git, so this is a local check, not a test.
-# Usage: verify-jpeg-decode.sh DIRECTORY_OF_JPEGS   (needs djpeg: brew install jpeg-turbo)
 set -eu
 
 if [ "$#" -ne 1 ]; then
@@ -15,7 +12,6 @@ trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/package/Sources/dump"
 cat > "$work/package/Package.swift" <<PACKAGE
-// swift-tools-version: 6.0
 import PackageDescription
 let package = Package(
     name: "dump",
@@ -28,7 +24,6 @@ cat > "$work/package/Sources/dump/main.swift" <<'SWIFT'
 import Foundation
 import PalmCore
 
-// dump INPUT.jpg OUTPUT.rgb: writes the decoded bytes, or exits 1 when PalmCore refuses the file.
 let arguments = CommandLine.arguments
 guard arguments.count == 3, let data = FileManager.default.contents(atPath: arguments[1]),
       let image = JPEGDecoder.decodeRGB(data) else { exit(1) }
@@ -43,7 +38,6 @@ for image in "$images"/*.jpg "$images"/*.jpeg; do
     name=$(basename "$image")
     size=$("$work/package/.build/release/dump" "$image" "$work/ours.rgb") || { echo "REFUSED $name"; failed=1; continue; }
     djpeg -rgb -pnm "$image" > "$work/reference.ppm"
-    # The PPM header is "P6\nW H\n255\n"; keep only the pixel payload.
     bytes=$(wc -c < "$work/ours.rgb" | tr -d ' ')
     total=$(wc -c < "$work/reference.ppm" | tr -d ' ')
     tail -c "$bytes" "$work/reference.ppm" > "$work/reference.rgb"

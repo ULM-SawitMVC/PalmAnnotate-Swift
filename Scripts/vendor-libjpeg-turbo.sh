@@ -1,6 +1,4 @@
 #!/bin/sh
-# Refreshes Packages/PalmCore/Sources/CJPEGTurbo/libjpeg-turbo from the official release tarball.
-# The decoder must stay on the version Android's detector decodes with (see docs/DETECTOR-PARITY.md).
 set -eu
 
 version=3.2.1
@@ -19,7 +17,6 @@ rm -rf "$target"
 mkdir -p "$target/src/wrapper"
 cp "$root/LICENSE.md" "$root/README.ijg" "$target/"
 
-# Decoder sources, with the helpers they link against. Compression, TurboJPEG, tools and SIMD stay out.
 for name in jaricom jcomapi jdapimin jdarith jdatasrc jdhuff jdinput jdlhuff jdmarker jdmaster jdphuff \
     jerror jmemmgr jmemnobs jpeg_nbits jstdhuff; do
     cp "$root/src/$name.c" "$target/src/"
@@ -28,9 +25,7 @@ for name in jdct jdcoefct jdhuff jdmainct jdmaster jdmerge jdsample jerror jincl
     jpeg_nbits jpegapicomp jpegint jpeglib jsamplecomp; do
     cp "$root/src/$name.h" "$target/src/"
 done
-# jconfig.h, jconfigint.h and jversion.h are hand-written in ../config for this build.
 
-# libjpeg-turbo 3.x compiles these sources once per data precision through wrappers.
 for name in jdapistd jdcolor jddiffct jdlossls jdmainct jdpostct jdsample jutils; do
     for bits in 8 12 16; do cp "$root/src/wrapper/$name-$bits.c" "$target/src/wrapper/"; done
 done
@@ -41,6 +36,5 @@ for name in jdapistd jdcoefct jdcolor jddctmgr jddiffct jdlossls jdmainct jdmerg
     jidctflt jidctfst jidctint jidctred jquant1 jquant2 jutils; do
     cp "$root/src/$name.c" "$target/src/"
 done
-# Included by the sources above, never compiled on their own.
 for name in jdcol565 jdcolext jdmrg565 jdmrgext; do cp "$root/src/$name.c" "$target/src/"; done
 echo "Vendored libjpeg-turbo $version into $target"

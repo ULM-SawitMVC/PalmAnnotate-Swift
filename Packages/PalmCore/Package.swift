@@ -9,7 +9,6 @@ let package = Package(
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", exact: "0.9.21")
     ],
     targets: [
-        // libjpeg-turbo 3.2.1, decoder only, C only. Scripts/vendor-libjpeg-turbo.sh refreshes it.
         .target(
             name: "CJPEGTurbo",
             sources: [
@@ -21,7 +20,6 @@ let package = Package(
                 "libjpeg-turbo/src/jdmaster.c", "libjpeg-turbo/src/jdphuff.c", "libjpeg-turbo/src/jerror.c",
                 "libjpeg-turbo/src/jmemmgr.c", "libjpeg-turbo/src/jmemnobs.c", "libjpeg-turbo/src/jpeg_nbits.c"
             ],
-            // Upstream code, built as shipped; -w drops its 64-to-32 conversion warnings.
             cSettings: [.headerSearchPath("config"), .headerSearchPath("libjpeg-turbo/src"), .unsafeFlags(["-w"])]
         ),
         .target(name: "PalmCore", dependencies: ["ZIPFoundation", "CJPEGTurbo"]),
