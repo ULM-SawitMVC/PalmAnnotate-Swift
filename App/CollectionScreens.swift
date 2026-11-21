@@ -523,7 +523,8 @@ struct RunDetail: View {
             Task { await load() }
         }) {
             CaptureScreen(run: run, store: store) { document in
-                pendingCaptureID = TreeID(value: document.id)
+                // Kotlin opens the editor after a photo capture and returns to the list after a video one.
+                if !run.type.requiresVideo { pendingCaptureID = TreeID(value: document.id) }
             }
         }
         .navigationDestination(item: $selectedID) { choice in destination(choice.value) }
