@@ -12,16 +12,10 @@ final class CollectionParityTests: XCTestCase {
     }
 
     @MainActor
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
-        for _ in 0..<5 where !element.isHittable { app.swipeUp() }
-        XCTAssertTrue(element.isHittable, "\(element) is not reachable")
-    }
-
-    @MainActor
     private func openModule(_ name: String, in app: XCUIApplication) {
         let entry = app.collectionViews.firstMatch.staticTexts[name]
         XCTAssertTrue(entry.waitForExistence(timeout: 30))
-        reveal(entry, in: app)
+        entry.reveal(scrolling: app)
         entry.tap()
         XCTAssertTrue(app.navigationBars[name].waitForExistence(timeout: 5))
     }
@@ -79,7 +73,7 @@ final class CollectionParityTests: XCTestCase {
         block.tap()
         block.typeText("M1\n")
         let toggle = app.switches["ID otomatis"]
-        reveal(toggle, in: app)
+        toggle.reveal(scrolling: app)
         XCTAssertEqual(toggle.value as? String, "1")
         let edge = toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
         if UIDevice.current.userInterfaceIdiom == .pad {

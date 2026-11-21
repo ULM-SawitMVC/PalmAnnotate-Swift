@@ -21,10 +21,7 @@ final class ManualTreeIDTests: XCTestCase {
         let field = app.textFields["manual-tree-id"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         XCTAssertEqual(field.value as? String, "4")
-        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        screenshot.name = "Tangkapan dengan ID manual"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
+        attachScreenshot(named: "Tangkapan dengan ID manual")
 
         replace(field, with: "3", in: app)
         save(app)

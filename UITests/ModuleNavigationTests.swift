@@ -65,16 +65,8 @@ final class ModuleNavigationTests: XCTestCase {
         XCTAssertTrue(app.buttons["Bagikan CSV"].waitForExistence(timeout: 5))
         attachScreenshot(named: "Hasil dan ekspor")
         for title in ["Bagikan Identity JSON", "Bagikan log anotasi", "Bagikan Output JSON", "Bagikan label YOLO"] {
-            XCTAssertTrue(scrollResults(to: app.buttons[title], in: app), title)
+            app.buttons[title].reveal(scrolling: app.collectionViews["results-list"])
         }
-    }
-
-    @MainActor
-    private func scrollResults(to element: XCUIElement, in app: XCUIApplication) -> Bool {
-        let list = app.collectionViews["results-list"]
-        for _ in 0..<4 where !element.exists { list.swipeUp() }
-        for _ in 0..<6 where !element.exists { list.swipeDown() }
-        return element.exists
     }
 
     @MainActor
@@ -106,13 +98,5 @@ final class ModuleNavigationTests: XCTestCase {
             attachScreenshot(named: module)
             navigation.buttons.firstMatch.tap()
         }
-    }
-
-    @MainActor
-    private func attachScreenshot(named name: String) {
-        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        screenshot.name = name
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
     }
 }

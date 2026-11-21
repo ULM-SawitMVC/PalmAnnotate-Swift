@@ -27,7 +27,7 @@ final class QualityReviewTests: XCTestCase {
 
         let save = app.buttons["Simpan sampel"]
         XCTAssertTrue(save.waitForExistence(timeout: 10))
-        reveal(save, in: app)
+        save.reveal(scrolling: app)
         save.tap()
         let gpsIssue = app.descendants(matching: .any)["quality-issue-metadata_gps_missing"]
         XCTAssertTrue(gpsIssue.waitForExistence(timeout: 5))
@@ -40,7 +40,7 @@ final class QualityReviewTests: XCTestCase {
         XCTAssertTrue(save.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["4 / 4 foto"].exists, "Returning to fix must keep the draft")
 
-        reveal(save, in: app)
+        save.reveal(scrolling: app)
         save.tap()
         let saveAnyway = app.buttons["Simpan tetap"]
         XCTAssertTrue(saveAnyway.waitForExistence(timeout: 5))
@@ -53,7 +53,7 @@ final class QualityReviewTests: XCTestCase {
         app.buttons["Hasil"].tap()
         XCTAssertTrue(app.navigationBars["Hasil"].waitForExistence(timeout: 5))
         let prepare = app.buttons["Siapkan berkas"]
-        reveal(prepare, in: app, scrolling: app.collectionViews["results-list"])
+        prepare.reveal(scrolling: app.collectionViews["results-list"])
         prepare.tap()
         let emptyIssue = app.descendants(matching: .any)["quality-issue-annotation_empty"]
         XCTAssertTrue(emptyIssue.waitForExistence(timeout: 5))
@@ -64,26 +64,12 @@ final class QualityReviewTests: XCTestCase {
         XCTAssertTrue(emptyIssue.waitForNonExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Bagikan CSV"].exists, "Returning to fix must not export")
 
-        reveal(prepare, in: app, scrolling: app.collectionViews["results-list"])
+        prepare.reveal(scrolling: app.collectionViews["results-list"])
         prepare.tap()
         let exportAnyway = app.buttons["Ekspor tetap"]
         XCTAssertTrue(exportAnyway.waitForExistence(timeout: 5))
         exportAnyway.tap()
         XCTAssertTrue(app.buttons["Bagikan CSV"].waitForExistence(timeout: 5))
         attachScreenshot(named: "Ekspor setelah pemeriksaan")
-    }
-
-    @MainActor
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication, scrolling container: XCUIElement? = nil) {
-        for _ in 0..<6 where !element.exists || !element.isHittable { (container ?? app).swipeUp() }
-        XCTAssertTrue(element.isHittable, "Cannot reach \(element)")
-    }
-
-    @MainActor
-    private func attachScreenshot(named name: String) {
-        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        screenshot.name = name
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
     }
 }

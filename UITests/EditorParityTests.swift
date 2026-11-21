@@ -75,7 +75,7 @@ final class EditorParityTests: XCTestCase {
         apply.tap()
         XCTAssertTrue(waitForLabel(error, "Berat harus berupa angka."))
         XCTAssertTrue(error.isHittable, "The message stays visible above the keyboard")
-        attachScreenshot("Panel berat dengan pesan galat")
+        attachScreenshot(named: "Panel berat dengan pesan galat")
 
         weight.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5) + "12,5")
         let hide = app.buttons["measurement-hide-keyboard"]
@@ -92,7 +92,7 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(apply.isHittable)
         apply.tap()
         XCTAssertTrue(waitForLabel(error, "Lingkar harus lebih dari nol bila diisi."))
-        attachScreenshot("Detail opsional dengan papan ketik")
+        attachScreenshot(named: "Detail opsional dengan papan ketik")
 
         circumference.typeText(XCUIKeyboardKey.delete.rawValue + "31")
         XCTAssertTrue(app.staticTexts["1 terisi"].exists)
@@ -150,7 +150,7 @@ final class EditorParityTests: XCTestCase {
                       "Each suggestion shows both bunches, like Kotlin's pair review")
         let acceptAuto = app.buttons["Terima semua otomatis (1)"]
         XCTAssertTrue(acceptAuto.isHittable)
-        attachScreenshot("Dedup dengan saran otomatis")
+        attachScreenshot(named: "Dedup dengan saran otomatis")
         acceptAuto.tap()
 
         let confirmed = app.staticTexts["Tautan terkonfirmasi (1)"]
@@ -170,7 +170,7 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Foto 2 · U"].exists)
         XCTAssertTrue(app.buttons["mismatch-1-B1"].isSelected, "The majority class is preselected, and a tie takes the first member's class")
         app.buttons["mismatch-1-B3"].tap()
-        attachScreenshot("Penyelesaian kelas tandan")
+        attachScreenshot(named: "Penyelesaian kelas tandan")
         app.buttons["mismatch-apply"].tap()
 
         XCTAssertTrue(app.navigationBars["Hasil"].waitForExistence(timeout: 10), "Applying continues to the results")
@@ -259,12 +259,6 @@ final class EditorParityTests: XCTestCase {
     }
 
     @MainActor
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
-        for _ in 0..<4 where !element.isHittable { app.swipeUp() }
-        XCTAssertTrue(element.isHittable, "Cannot reach \(element)")
-    }
-
-    @MainActor
     private func focus(_ field: XCUIElement, in app: XCUIApplication) {
         field.tap()
         if !app.keyboards.firstMatch.waitForExistence(timeout: 5) { field.tap() }
@@ -274,13 +268,5 @@ final class EditorParityTests: XCTestCase {
     private func waitForLabel(_ element: XCUIElement, _ label: String, timeout: TimeInterval = 15) -> Bool {
         let predicate = NSPredicate(format: "label == %@", label)
         return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: timeout) == .completed
-    }
-
-    @MainActor
-    private func attachScreenshot(_ name: String) {
-        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        screenshot.name = name
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
     }
 }
