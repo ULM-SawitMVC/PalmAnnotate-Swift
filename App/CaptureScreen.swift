@@ -13,16 +13,23 @@ struct CaptureScreen: View {
     @State private var camera = CaptureDevice()
     @State private var gps = CaptureLocation()
     @State private var draft: [CapturedPhoto] = []
+    @State private var previews: [Int: UIImage] = [:]
+    @State private var thumbnails: [Int: UIImage] = [:]
     @State private var reviewedSide: Int?
     @State private var replacement: Int?
     @State private var recording = false
+    @State private var recordingStarted: Date?
     @State private var savedVideo = false
+    @State private var draftInvalid = false
     @State private var ready = false
     @State private var busy = true
     @State private var busyLabel = "Menyiapkan kamera…"
     @State private var error: String?
     @State private var captureError: String?
+    @State private var permissionDenied = false
     @State private var showDiscard = false
+    @State private var showRetakeAll = false
+    @State private var showStopRecording = false
     @State private var qualityReport: QualityCheck.Report?
     #if targetEnvironment(simulator)
     @State private var fixture: PhotosPickerItem?
@@ -33,23 +40,11 @@ struct CaptureScreen: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("\(draft.count) / \(run.sideCount) foto").font(.headline)
-                    if recording {
-                        Label("Merekam", systemImage: "record.circle.fill").foregroundStyle(.red)
-                    }
-                    if let reviewedSide, draft.indices.contains(reviewedSide),
-                       let image = UIImage(data: draft[reviewedSide].jpeg) {
-                        Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 420)
-                            .frame(maxWidth: .infinity).background(.black, in: .rect(cornerRadius: 12))
-                            .accessibilityLabel("Foto \(reviewedSide + 1)")
-                    } else if ready {
-                        CameraPreview(camera: camera).aspectRatio(4 / 3, contentMode: .fit)
-                            .frame(maxHeight: 360).clipShape(.rect(cornerRadius: 12))
-                            .accessibilityLabel("Pratinjau kamera")
-                    } else if let captureError {
-                        Text(captureError).foregroundStyle(.secondary)
-                    }
-                    if !draft.isEmpty { photoButtons }
+                    header
+                    if draftInvalid { invalidDraftBanner }
+                    if recording, let recordingStarted { recordingIndicator(since: recordingStarted) }
+                    stage
+                    if !draft.isEmpty { thumbnailStrip }
                     captureActions
                     if busy {
                         ProgressView(busyLabel).frame(maxWidth: .infinity, alignment: .leading)
@@ -62,9 +57,12 @@ struct CaptureScreen: View {
             .navigationTitle(run.type.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Tutup") { dismiss() }.disabled(busy) }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Tutup") { if recording { showStopRecording = true } else { dismiss() } }
+                        .disabled(busy && !recording)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    if !draft.isEmpty && !recording {
+                    if (!draft.isEmpty || draftInvalid) && !recording {
                         Button("Hapus draf", systemImage: "trash", role: .destructive) { showDiscard = true }
                             .disabled(busy)
                     }
@@ -74,11 +72,35 @@ struct CaptureScreen: View {
                 Button("Batal", role: .cancel) {}
                 Button("Hapus", role: .destructive) { work("Menghapus draf…") { try await clearDraft() } }
             }
+            .alert("Ambil ulang semua foto dengan rekaman baru?", isPresented: $showRetakeAll) {
+                Button("Batal", role: .cancel) {}
+                Button("Rekam ulang", role: .destructive, action: startRecording)
+            } message: {
+                Text("Foto dan video draf ini akan dihapus. Setiap foto harus diambil selama rekaman yang sama.")
+            }
+            .alert("Hentikan rekaman dan buang video?", isPresented: $showStopRecording) {
+                Button("Lanjut merekam", role: .cancel) {}
+                Button("Buang", role: .destructive) {
+                    recording = false
+                    camera.stop()
+                    dismiss()
+                }
+            } message: {
+                Text("Foto yang diambil selama rekaman ini tidak dapat disimpan tanpa videonya.")
+            }
             .modifier(ErrorAlert(message: $error))
             .qualityReview($qualityReport, question: "Simpan tetap?", continueTitle: "Simpan tetap", onContinue: commit)
             .interactiveDismissDisabled(recording || busy)
             .task { await open() }
-            .onDisappear { camera.stop() }
+            .onDisappear {
+                camera.stop()
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+            // Kotlin keeps the screen on while recording. An auto-lock would end the take.
+            .onChange(of: recording) { _, value in
+                UIApplication.shared.isIdleTimerDisabled = value
+                recordingStarted = value ? .now : nil
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background {
                     camera.stop()
@@ -117,13 +139,143 @@ struct CaptureScreen: View {
         }
     }
 
-    private var photoButtons: some View {
+    // MARK: Sections
+
+    /// Kotlin shows the locked run and the GPS line above the camera.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(draft.count) / \(run.sideCount) foto").font(.headline)
+            Label("\(run.variety) · \(run.block)", systemImage: "lock")
+                .font(.subheadline).foregroundStyle(.secondary)
+            TimelineView(.periodic(from: .now, by: 15)) { context in
+                HStack(spacing: 8) {
+                    Label(gps.describe(at: context.date), systemImage: gpsSymbol)
+                        .font(.footnote)
+                        .foregroundStyle(gpsColor)
+                        .accessibilityIdentifier("gps-status")
+                    if gps.provenance.status == .permissionDenied || gps.provenance.status == .locationOff {
+                        Button("Pengaturan", action: openSettings).font(.footnote)
+                    }
+                }
+            }
+        }
+    }
+
+    private var gpsSymbol: String {
+        switch gps.provenance.status {
+        case .fresh: "location.fill"
+        case .stale: "location"
+        default: "location.slash"
+        }
+    }
+
+    private var gpsColor: Color {
+        switch gps.provenance.atCommit(.now).status {
+        case .fresh: .secondary
+        case .stale: .orange
+        default: .red
+        }
+    }
+
+    private var invalidDraftBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Draf tangkapan tidak valid. Hapus draf untuk mulai lagi.", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            Button("Hapus draf", role: .destructive) { showDiscard = true }
+                .buttonStyle(.bordered)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.red.opacity(0.1), in: .rect(cornerRadius: 12))
+        .accessibilityIdentifier("invalid-draft")
+    }
+
+    private func recordingIndicator(since start: Date) -> some View {
+        TimelineView(.periodic(from: start, by: 1)) { context in
+            let seconds = max(0, Int(context.date.timeIntervalSince(start)))
+            Label("Merekam \(seconds / 60):\(String(format: "%02d", seconds % 60))", systemImage: "record.circle.fill")
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(.red)
+                .accessibilityIdentifier("recording-indicator")
+        }
+    }
+
+    @ViewBuilder
+    private var stage: some View {
+        if let reviewedSide, draft.indices.contains(reviewedSide) {
+            reviewPager(selection: reviewedSide)
+        } else if ready {
+            CameraPreview(camera: camera).aspectRatio(4 / 3, contentMode: .fit)
+                .frame(maxHeight: 360).clipShape(.rect(cornerRadius: 12))
+                .accessibilityLabel("Pratinjau kamera")
+        } else if let captureError {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(captureError).foregroundStyle(.secondary)
+                if permissionDenied { Button("Buka Pengaturan", action: openSettings) }
+            }
+        }
+    }
+
+    /// Kotlin's review pager: swipe between the photos taken so far, then retake any side.
+    private func reviewPager(selection: Int) -> some View {
+        let binding = Binding<Int>(get: { reviewedSide ?? selection }, set: { reviewedSide = $0 })
+        return TabView(selection: binding) {
+            ForEach(draft.indices, id: \.self) { index in
+                Group {
+                    if let image = previews[index] {
+                        Image(uiImage: image).resizable().scaledToFit()
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Foto \(index + 1)")
+                .tag(index)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: draft.count > 1 ? .always : .never))
+        .frame(height: 420)
+        .background(.black, in: .rect(cornerRadius: 12))
+        .overlay(alignment: .topLeading) {
+            Text("Foto \(selection + 1)/\(run.sideCount)")
+                .font(.caption.bold())
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(.black.opacity(0.7), in: .capsule)
+                .foregroundStyle(.white)
+                .padding(8)
+        }
+        .disabled(recording)
+    }
+
+    private var thumbnailStrip: some View {
         ScrollView(.horizontal) {
-            HStack {
+            HStack(spacing: 8) {
                 ForEach(draft.indices, id: \.self) { index in
-                    Button("Foto \(index + 1)") { reviewedSide = index }
-                        .buttonStyle(.borderedProminent)
-                        .tint(reviewedSide == index ? .accentColor : .secondary)
+                    Button { reviewedSide = index } label: {
+                        ZStack(alignment: .bottomTrailing) {
+                            Group {
+                                if let image = thumbnails[index] {
+                                    Image(uiImage: image).resizable().scaledToFill()
+                                } else {
+                                    Color.secondary.opacity(0.3)
+                                }
+                            }
+                            .frame(width: 56, height: 56)
+                            .clipShape(.rect(cornerRadius: 8))
+                            Text("\(index + 1)")
+                                .font(.caption2.bold())
+                                .padding(3)
+                                .background(.black.opacity(0.7), in: .rect(cornerRadius: 4))
+                                .foregroundStyle(.white)
+                                .padding(3)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(reviewedSide == index ? Color.accentColor : .clear, lineWidth: 3)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Foto \(index + 1)")
                 }
             }
         }
@@ -135,17 +287,7 @@ struct CaptureScreen: View {
         VStack(alignment: .leading, spacing: 12) {
             if run.type.requiresVideo && !recording && !savedVideo {
                 Button("Mulai rekam", systemImage: "record.circle") {
-                    work("Memulai rekaman…") {
-                        try await clearDraft()
-                        try await camera.startVideo(rotation: rotation) {
-                            // The system ended the recording (a call, another camera client, or full
-                            // storage). Photos taken during it cannot be saved without their video.
-                            guard recording else { return }
-                            recording = false
-                            error = CaptureError.recordingInterrupted.localizedDescription
-                        }
-                        recording = true
-                    }
+                    if draft.isEmpty { startRecording() } else { showRetakeAll = true }
                 }
                 .disabled(!ready)
             }
@@ -161,6 +303,10 @@ struct CaptureScreen: View {
                     }
                 }
                 .disabled(draft.count != run.sideCount)
+                if draft.count != run.sideCount {
+                    Text("Ambil \(run.sideCount - draft.count) foto lagi sebelum menghentikan rekaman.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
             }
             if let reviewedSide, !recording, !run.type.requiresVideo || savedVideo {
                 Button("Ambil ulang foto \(reviewedSide + 1)", systemImage: "arrow.clockwise") {
@@ -195,7 +341,7 @@ struct CaptureScreen: View {
                 .buttonStyle(.borderedProminent)
             }
         }
-        .disabled(busy)
+        .disabled(busy || draftInvalid)
     }
 
     private var canSave: Bool {
@@ -208,13 +354,20 @@ struct CaptureScreen: View {
         return CameraPreview.PreviewView.rotation(for: scene?.interfaceOrientation ?? .portrait)
     }
 
+    // MARK: Actions
+
     private func open() async {
         defer { busy = false }
         do {
             draft = try await store.draftPhotos(runID: run.id)
             savedVideo = await store.draftVideo(runID: run.id) != nil
             reviewedSide = draft.indices.last
-        } catch { self.error = error.localizedDescription }
+            for index in draft.indices { render(index) }
+        } catch {
+            // Kotlin's "Capture draft INVALID" state: the draft cannot be read, so the operator can
+            // only discard it. Without this the screen would reject every new photo.
+            draftInvalid = true
+        }
         #if DEBUG
         if !ProcessInfo.processInfo.arguments.contains("--ui-test") { gps.refresh() }
         #else
@@ -231,8 +384,26 @@ struct CaptureScreen: View {
             try await camera.start(withVideo: run.type.requiresVideo)
             ready = true
             captureError = nil
-        } catch { captureError = error.localizedDescription }
+            permissionDenied = false
+        } catch {
+            captureError = error.localizedDescription
+            permissionDenied = error as? CaptureError == .camera || error as? CaptureError == .microphone
+        }
         #endif
+    }
+
+    private func startRecording() {
+        work("Memulai rekaman…") {
+            try await clearDraft()
+            try await camera.startVideo(rotation: rotation) {
+                // The system ended the recording (a call, another camera client, or full
+                // storage). Photos taken during it cannot be saved without their video.
+                guard recording else { return }
+                recording = false
+                error = CaptureError.recordingInterrupted.localizedDescription
+            }
+            recording = true
+        }
     }
 
     private func savePhoto(_ data: Data) async throws {
@@ -249,8 +420,15 @@ struct CaptureScreen: View {
         try await store.saveDraftPhoto(photo, runID: run.id, side: index)
         if index == draft.count { draft.append(photo) }
         else { draft[index] = photo }
+        render(index)
         replacement = nil
         if !recording { reviewedSide = index }
+    }
+
+    private func render(_ index: Int) {
+        guard draft.indices.contains(index) else { return }
+        previews[index] = previewImage(draft[index].jpeg, maxPixel: 1600)
+        thumbnails[index] = previewImage(draft[index].jpeg, maxPixel: 168)
     }
 
     /// Kotlin `CaptureFlowViewModel.requestSave`: review WARN and ERROR reports before committing.
@@ -261,18 +439,29 @@ struct CaptureScreen: View {
 
     private func commit() {
         work("Menyimpan sampel…") {
-            let document = try await store.commitCapture(runID: run.id, gps: gps.provenance)
-            completed(document)
-            dismiss()
+            do {
+                let document = try await store.commitCapture(runID: run.id, gps: gps.provenance)
+                completed(document)
+                dismiss()
+            } catch {
+                throw SaveFailure(detail: error.localizedDescription)
+            }
         }
     }
 
     private func clearDraft() async throws {
         try await store.discardDraft(runID: run.id)
         draft = []
+        previews = [:]
+        thumbnails = [:]
         reviewedSide = nil
         replacement = nil
         savedVideo = false
+        draftInvalid = false
+    }
+
+    private func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
     }
 
     private func work(_ label: String, operation: @escaping @MainActor () async throws -> Void) {
@@ -285,4 +474,10 @@ struct CaptureScreen: View {
             catch { self.error = error.localizedDescription }
         }
     }
+}
+
+/// Kotlin's commit failure text, followed by the cause.
+private struct SaveFailure: LocalizedError {
+    let detail: String
+    var errorDescription: String? { "Sampel tidak dapat disimpan. Periksa penyimpanan lalu coba lagi. (\(detail))" }
 }
