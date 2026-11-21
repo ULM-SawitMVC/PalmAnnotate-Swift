@@ -238,7 +238,7 @@ public struct TreeDocument: Codable, Equatable, Identifiable, Sendable {
     public internal(set) var revision = 0
     public internal(set) var isComplete = false
     public internal(set) var savedAt: Date
-    private var nextLinkID = 0
+    private(set) var nextLinkID = 0
 
     public var clusters: [[BoxRef]] {
         let refs = sides.flatMap { side in side.annotations.map { BoxRef(side: side.id, box: $0.id) } }
