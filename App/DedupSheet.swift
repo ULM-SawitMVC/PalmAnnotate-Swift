@@ -7,6 +7,9 @@ struct DedupSheet: View {
     let document: TreeDocument
     @Binding var clockwise: Bool
     let busy: Bool
+    /// The editor's photos, so each suggestion can show both bunches like Kotlin's pair review.
+    let images: SideImageCache
+    let loadImage: (Int) async -> Void
     let onAccept: ([LinkSuggestion]) -> Void
     let onRemove: (String) -> Void
     /// Resolves class mismatches with the given choices (empty when there are none), saves, then shows results.
@@ -83,12 +86,23 @@ struct DedupSheet: View {
             .sheet(isPresented: $showMismatch) {
                 MismatchResolutionSheet(mismatches: mismatches, onApply: onCompute)
             }
+            .task(id: clockwise) {
+                for side in Set(suggestions.flatMap { [$0.a.side, $0.b.side] }).sorted() { await loadImage(side) }
+            }
         }
     }
 
     private func row(_ suggestion: LinkSuggestion) -> some View {
         let tint: Color = suggestion.category == .auto ? .green : .orange
         return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                crop(suggestion.a)
+                Image(systemName: "arrow.left.and.right").foregroundStyle(.secondary)
+                crop(suggestion.b)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Pratinjau pasangan")
+            .accessibilityIdentifier("dedup-pair-preview")
             HStack {
                 Text(pairLabel(suggestion.a, suggestion.b))
                 Spacer()
@@ -111,6 +125,35 @@ struct DedupSheet: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// The bunch with a margin of context, cut from the downsampled photo. Box math stays in original pixels.
+    private func crop(_ ref: BoxRef) -> some View {
+        let cropped: UIImage? = {
+            guard let image = images.image(ref.side)?.cgImage,
+                  let side = document.sides.first(where: { $0.id == ref.side }), side.width > 0,
+                  let rect = document.annotation(ref)?.rect else { return nil }
+            let scale = CGFloat(image.width) / CGFloat(side.width)
+            let width = CGFloat(rect.x2 - rect.x1)
+            let height = CGFloat(rect.y2 - rect.y1)
+            let margin = max(width, height) * 0.15
+            let area = CGRect(x: CGFloat(rect.x1) - margin, y: CGFloat(rect.y1) - margin,
+                              width: width + margin * 2, height: height + margin * 2)
+            let pixels = CGRect(x: area.minX * scale, y: area.minY * scale, width: area.width * scale, height: area.height * scale)
+                .integral.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            return image.cropping(to: pixels).map { UIImage(cgImage: $0) }
+        }()
+        return Group {
+            if let cropped {
+                Image(uiImage: cropped).resizable().scaledToFit()
+            } else {
+                ProgressView()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 96)
+        .background(.black, in: .rect(cornerRadius: 8))
+        .clipShape(.rect(cornerRadius: 8))
     }
 
     private func badge(_ number: Int, group: Int) -> some View {

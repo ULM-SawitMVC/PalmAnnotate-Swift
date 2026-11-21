@@ -76,6 +76,7 @@ struct AnnotationEditor: View {
         }) {
             if let document {
                 DedupSheet(document: document, clockwise: $clockwise, busy: saving,
+                           images: cache, loadImage: { await loadImage($0) },
                            onAccept: { items in
                     persistWithStatus { tree in
                         var accepted = 0

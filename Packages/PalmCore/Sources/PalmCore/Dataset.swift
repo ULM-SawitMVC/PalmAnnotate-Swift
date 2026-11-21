@@ -243,7 +243,8 @@ public struct TreeDocument: Codable, Equatable, Identifiable, Sendable {
     public internal(set) var links: [CrossSideLink] = []
     public internal(set) var revision = 0
     public internal(set) var isComplete = false
-    var savedAt: Date
+    /// When the sample was last saved; Output JSON uses it as `generated_at`.
+    public internal(set) var savedAt: Date
     private var nextLinkID = 0
 
     public var clusters: [[BoxRef]] {

@@ -8,6 +8,8 @@ struct ResultsView: View {
     @State private var csvURL: URL?
     @State private var identityURL: URL?
     @State private var annotationLogs: [URL] = []
+    @State private var outputURL: URL?
+    @State private var labelURLs: [URL] = []
     @State private var error: String?
     @State private var qualityReport: QualityCheck.Report?
     @State private var showMismatch = false
@@ -49,6 +51,10 @@ struct ResultsView: View {
                         ShareLink(item: csvURL) { Label("Bagikan CSV", systemImage: "tablecells") }
                         ShareLink(item: identityURL) { Label("Bagikan Identity JSON", systemImage: "curlybraces") }
                         ShareLink(items: annotationLogs) { Label("Bagikan log anotasi", systemImage: "list.bullet.rectangle") }
+                        if let outputURL {
+                            ShareLink(item: outputURL) { Label("Bagikan Output JSON", systemImage: "doc.text") }
+                        }
+                        ShareLink(items: labelURLs) { Label("Bagikan label YOLO", systemImage: "square.dashed") }
                     }
                     Button("Siapkan berkas", action: requestExport)
                     if !document.isComplete {
@@ -57,6 +63,7 @@ struct ResultsView: View {
                     }
                 }
             }
+            .accessibilityIdentifier("results-list")
             .navigationTitle("Hasil")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Tutup") { dismiss() } } }
@@ -79,6 +86,8 @@ struct ResultsView: View {
                 csvURL = nil
                 identityURL = nil
                 annotationLogs = []
+                outputURL = nil
+                labelURLs = []
             } catch { self.error = error.localizedDescription }
         }
     }
@@ -102,9 +111,19 @@ struct ResultsView: View {
                 try ExportCodec.annotLog(document, side: side).write(to: url, options: .atomic)
                 return url
             }
+            // Kotlin's Output JSON and YOLO exports write the same files the ZIP carries under json/ and labels/.
+            let output = folder.appendingPathComponent(document.id + ".json")
+            try ExportCodec.output(document, generatedAt: document.savedAt).write(to: output, options: .atomic)
+            let labels = try document.sides.map { side in
+                let url = folder.appendingPathComponent("\(document.id)_\(side.id + 1).txt")
+                try ExportCodec.labels(side, type: document.run.type).write(to: url, options: .atomic)
+                return url
+            }
             csvURL = csv
             identityURL = identity
             annotationLogs = logs
+            outputURL = output
+            labelURLs = labels
         } catch { self.error = error.localizedDescription }
     }
 }

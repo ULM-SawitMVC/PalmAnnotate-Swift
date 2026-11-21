@@ -149,6 +149,8 @@ final class EditorParityTests: XCTestCase {
         let category = app.staticTexts["OTOMATIS"]
         XCTAssertTrue(category.waitForExistence(timeout: 5), "A strong seam match is categorised as automatic")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label MATCHES '[0-9]+%'")).firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["dedup-pair-preview"].firstMatch.exists,
+                      "Each suggestion shows both bunches, like Kotlin's pair review")
         let acceptAuto = app.buttons["Terima semua otomatis (1)"]
         XCTAssertTrue(acceptAuto.isHittable)
         attachScreenshot("Dedup dengan saran otomatis")
