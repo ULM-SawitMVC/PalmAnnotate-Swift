@@ -9,6 +9,7 @@ struct ResultsView: View {
     @State private var identityURL: URL?
     @State private var annotationLogs: [URL] = []
     @State private var error: String?
+    @State private var qualityReport: QualityCheck.Report?
 
     var body: some View {
         NavigationStack {
@@ -46,7 +47,7 @@ struct ResultsView: View {
                         ShareLink(item: identityURL) { Label("Bagikan Identity JSON", systemImage: "curlybraces") }
                         ShareLink(items: annotationLogs) { Label("Bagikan log anotasi", systemImage: "list.bullet.rectangle") }
                     }
-                    Button("Siapkan berkas", action: prepare)
+                    Button("Siapkan berkas", action: requestExport)
                         .disabled(!document.isComplete)
                     if !document.isComplete { Text("Selesaikan sampel agar dapat diekspor.").foregroundStyle(.secondary) }
                 }
@@ -55,6 +56,7 @@ struct ResultsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Tutup") { dismiss() } } }
             .modifier(ErrorAlert(message: $error))
+            .qualityReview($qualityReport, question: "Ekspor tetap?", continueTitle: "Ekspor tetap", onContinue: prepare)
         }
     }
 
@@ -69,6 +71,12 @@ struct ResultsView: View {
                 annotationLogs = []
             } catch { self.error = error.localizedDescription }
         }
+    }
+
+    /// Kotlin `ResultsViewModel.exportGated`: review any non-OK tree report before exporting.
+    private func requestExport() {
+        let report = QualityCheck.analyzeTree(document)
+        if report.needsReview { qualityReport = report } else { prepare() }
     }
 
     private func prepare() {
