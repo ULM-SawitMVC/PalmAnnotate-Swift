@@ -269,7 +269,6 @@ final class EditorParityTests: XCTestCase {
     @MainActor
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
         for _ in 0..<4 where !element.isHittable { app.swipeUp() }
-        if !element.isHittable { print(app.debugDescription) }
         XCTAssertTrue(element.isHittable, "Cannot reach \(element)")
     }
 
