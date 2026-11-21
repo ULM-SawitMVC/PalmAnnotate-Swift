@@ -176,13 +176,14 @@ import ZIPFoundation
         #expect(try await reopened.trees(runID: run.id).isEmpty)
     }
 
-    @Test func readLegacyCorpus() throws {
-        let env = ProcessInfo.processInfo.environment
-        let source = env["PALM_LEGACY_CORPUS"].map { URL(fileURLWithPath: $0) }
-            ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-                .appendingPathComponent("../../../../../Baseline-SawitMVC/ground_truth/annotations").standardizedFileURL
-        guard FileManager.default.fileExists(atPath: source.path) else { return }
-        let files = try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)
+    private static let legacyCorpus = ProcessInfo.processInfo.environment["PALM_LEGACY_CORPUS"].map { URL(fileURLWithPath: $0) }
+        ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../../../../Baseline-SawitMVC/ground_truth/annotations").standardizedFileURL
+
+    @Test(.enabled(if: FileManager.default.fileExists(atPath: legacyCorpus.path),
+                   "Set PALM_LEGACY_CORPUS to the Baseline-SawitMVC ground_truth/annotations directory"))
+    func readLegacyCorpus() throws {
+        let files = try FileManager.default.contentsOfDirectory(at: Self.legacyCorpus, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "json" }
         #expect(!files.isEmpty)
         for file in files {
