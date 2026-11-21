@@ -64,3 +64,5 @@ xcodebuild -project PalmAnnotate.xcodeproj -scheme PalmAnnotate \
 ```
 
 Set `PALM_SIMULATOR_UDID` to the target simulator ID and `PALM_DERIVED_DATA` to a writable build directory. Set `PALM_LEGACY_CORPUS` to the Baseline-SawitMVC `ground_truth/annotations` directory for the legacy corpus test. Report simulator and physical-device results explicitly.
+
+GitHub Actions runs the PalmCore tests and the simulator build for every push to `main` and every pull request ([ios.yml](.github/workflows/ios.yml)). The runner uses the newest stable Xcode on `macos-26`, which can be older than the local Xcode. On 2026-11-22 it was Xcode 26.6 with Swift 6.3. Keep the code compiling there, and do not merge while the workflow is red.
