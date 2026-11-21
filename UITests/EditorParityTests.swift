@@ -172,8 +172,12 @@ final class EditorParityTests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Hasil"].waitForExistence(timeout: 10), "Applying continues to the results")
         XCTAssertFalse(app.staticTexts["Perbedaan kelas"].exists)
-        XCTAssertEqual(app.staticTexts["results-linked-duplicates"].exists || app.descendants(matching: .any)["results-linked-duplicates"].exists, true)
-        XCTAssertTrue(app.staticTexts["B3"].exists)
+        let linked = app.descendants(matching: .any)["results-linked-duplicates"]
+        for _ in 0..<3 where !linked.exists { app.swipeUp() }
+        XCTAssertTrue(linked.exists, "The results count linked duplicates")
+        let b3 = app.staticTexts["B3"]
+        for _ in 0..<3 where !b3.exists { app.swipeUp() }
+        XCTAssertTrue(b3.exists, "The class chosen in the resolution sheet is the one counted")
     }
 
     // MARK: Helpers
