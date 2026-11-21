@@ -219,7 +219,7 @@ final class EditorParityTests: XCTestCase {
     @MainActor
     private func tapSample(_ app: XCUIApplication) {
         let sample = sampleRow(app)
-        for _ in 0..<6 where !sample.waitForExistence(timeout: 10) { app.swipeUp() }
+        for _ in 0..<6 where !sample.waitForExistence(timeout: 5) { app.collectionViews.firstMatch.swipeUp() }
         XCTAssertTrue(sample.exists, "The sample row never appeared")
         sample.tap()
     }
@@ -259,6 +259,7 @@ final class EditorParityTests: XCTestCase {
     @MainActor
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
         for _ in 0..<4 where !element.isHittable { app.swipeUp() }
+        if !element.isHittable { print(app.debugDescription) }
         XCTAssertTrue(element.isHittable, "Cannot reach \(element)")
     }
 
