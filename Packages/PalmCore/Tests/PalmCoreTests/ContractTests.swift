@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import PalmCore
 import Testing
@@ -92,6 +93,48 @@ import ZIPFoundation
         } catch StoreError.videoRequired {
             #expect(try await store.draftPhotos(runID: video.id).count == 4)
         }
+    }
+
+    @Test(arguments: [4, 8])
+    func videoDraftRetakeSurvivesReopenAndExport(sideCount: Int) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = directory.appendingPathComponent("store")
+        let store = try PackageStore(root: root)
+        let run = try await store.createRun(type: .multisideVideo, variety: "DAMIMAS", block: "QA", operatorName: "",
+                                              sideCount: sideCount, split: "field", tokenized: false)
+        let recording = directory.appendingPathComponent("accepted.mp4")
+        // CaptureDevice validates the tracks before giving PackageStore the file.
+        let video = Data("accepted video payload".utf8)
+        try video.write(to: recording)
+        for side in 0..<sideCount { try await store.saveDraftPhoto(photo, runID: run.id, side: side) }
+        try await store.saveDraftVideo(from: recording, runID: run.id)
+
+        let reopened = try PackageStore(root: root)
+        let retake = CapturedPhoto(jpeg: Data([0xff, 0xd8, 0xff, 0xfe, 0x00, 0x03, 0x42, 0xff, 0xd9]), width: 100, height: 100)
+        try await reopened.saveDraftPhoto(retake, runID: run.id, side: 1)
+        let draftVideo = try #require(await reopened.draftVideo(runID: run.id))
+        #expect(try Data(contentsOf: draftVideo) == video)
+        let tree = try await reopened.commitCapture(runID: run.id, gps: Provenance(status: .unavailable))
+        #expect(tree.isComplete)
+        #expect(tree.sides.count == sideCount)
+        #expect(try await reopened.draftPhotos(runID: run.id).isEmpty)
+        #expect(await reopened.draftVideo(runID: run.id) == nil)
+
+        let restarted = try PackageStore(root: root)
+        #expect(try await restarted.tree(id: tree.id) == tree)
+        let savedVideo = await restarted.videoURL(treeID: tree.id)
+        #expect(try Data(contentsOf: savedVideo) == video)
+        let zip = try await restarted.export(runID: run.id, to: directory, appVersion: "test")
+        let archive = try Archive(url: zip, accessMode: .read)
+        #expect(try data("video/\(tree.id).mp4", archive: archive) == video)
+        for side in 0..<sideCount {
+            #expect(try data("images/\(tree.id)_\(side + 1).jpg", archive: archive) == (side == 1 ? retake.jpeg : photo.jpeg))
+        }
+        let artifact = try #require(tree.video)
+        let digest = SHA256.hash(data: video).map { String(format: "%02x", $0) }.joined()
+        #expect(artifact.sha256 == digest)
+        #expect(artifact.sizeBytes == video.count)
     }
 
     @Test func detectorDecodesAndSuppressesOverlaps() throws {
