@@ -37,8 +37,18 @@ public struct Letterbox: Sendable {
 }
 
 public enum YoloDetection {
+    public struct Prediction: Sendable {
+        public let annotation: Annotation
+        public let confidence: Float
+    }
+
     public static func decode(_ data: [Float], shape: [Int], letterbox: Letterbox,
                               config: DetectorConfiguration) -> [Annotation] {
+        predictions(data, shape: shape, letterbox: letterbox, config: config).map(\.annotation)
+    }
+
+    public static func predictions(_ data: [Float], shape: [Int], letterbox: Letterbox,
+                                   config: DetectorConfiguration) -> [Prediction] {
         guard shape.count == 3, shape[0] == 1, shape[1] > 0, shape[2] > 0,
               shape[1] <= data.count / shape[2], config.maxBoxes > 0 else { return [] }
         let channelsFirst = shape[1] < shape[2]
@@ -57,11 +67,14 @@ public enum YoloDetection {
             candidates.append((row, score, box))
         }
         candidates.sort { $0.score == $1.score ? $0.index < $1.index : $0.score > $1.score }
-        var selected: [PixelBox] = []
-        for candidate in candidates where !selected.contains(where: { $0.iou(candidate.box) > config.iouThreshold }) {
-            selected.append(candidate.box)
+        var selected: [Prediction] = []
+        for candidate in candidates where !selected.contains(where: {
+            candidate.box.iou($0.annotation.rect) > config.iouThreshold
+        }) {
+            selected.append(Prediction(annotation: Annotation(id: "det\(selected.count)", rect: candidate.box),
+                                       confidence: candidate.score))
             if selected.count == config.maxBoxes { break }
         }
-        return selected.enumerated().map { Annotation(id: "det\($0.offset)", rect: $0.element) }
+        return selected
     }
 }
