@@ -200,7 +200,7 @@ final class EditorParityTests: XCTestCase {
         // The button stays disabled while the capture screen prepares the camera.
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: save)
         XCTAssertEqual(XCTWaiter().wait(for: [enabled], timeout: 90), .completed)
-        reveal(save, in: app)
+        // Tapping scrolls the control into view; a manual swipe closes the capture sheet on a landscape phone.
         save.tap()
         let saveAnyway = app.buttons["Simpan tetap"]
         XCTAssertTrue(saveAnyway.waitForExistence(timeout: 5))
