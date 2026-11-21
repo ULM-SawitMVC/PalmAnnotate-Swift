@@ -138,7 +138,7 @@ final class EditorParityTests: XCTestCase {
         drawBox(app, from: CGVector(dx: 0.82, dy: 0.35), to: CGVector(dx: 0.98, dy: 0.65))
 
         let dedup = app.buttons["open-dedup"]
-        reveal(dedup, in: app)
+        XCTAssertTrue(dedup.waitForExistence(timeout: 10))
         dedup.tap()
         XCTAssertTrue(app.navigationBars["Dedup"].waitForExistence(timeout: 5))
         let category = app.staticTexts["OTOMATIS"]
