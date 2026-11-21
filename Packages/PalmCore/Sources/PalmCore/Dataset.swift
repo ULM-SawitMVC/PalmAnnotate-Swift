@@ -68,6 +68,10 @@ public struct Measurements: Codable, Equatable, Sendable {
         self.notes = trimmed == "" ? nil : trimmed
     }
 
+    var normalized: Self {
+        Self(weightKg: weightKg, heightCm: heightCm, circumferenceCm: circumferenceCm, notes: notes)
+    }
+
     public var validationError: String? {
         guard let weightKg, weightKg.isFinite, weightKg > 0 else { return "Berat harus lebih dari nol." }
         guard heightCm.map({ $0.isFinite && $0 > 0 }) ?? true else { return "Tinggi harus lebih dari nol." }
@@ -247,16 +251,15 @@ public struct TreeDocument: Codable, Equatable, Identifiable, Sendable {
     }
 
     public var completionError: String? {
+        guard run.type == .bunchWeight else { return nil }
         let clusters = clusters
-        if run.type == .bunchWeight {
-            if clusters.isEmpty { return "Tambahkan minimal satu kotak tandan." }
-            for (index, cluster) in clusters.enumerated() {
-                let values = cluster.compactMap { annotation($0)?.measurements }
-                guard let first = values.first, values.allSatisfy({ $0 == first }) else {
-                    return "Tandan \(index + 1): ukuran dari sisi yang ditautkan berbeda."
-                }
-                if let error = first.validationError { return "Tandan \(index + 1): \(error)" }
+        if clusters.isEmpty { return "Tambahkan minimal satu kotak tandan." }
+        for (index, cluster) in clusters.enumerated() {
+            let values = cluster.compactMap { annotation($0)?.measurements.normalized }
+            guard let first = values.first, values.allSatisfy({ $0 == first }) else {
+                return "Tandan \(index + 1): ukuran dari sisi yang ditautkan berbeda."
             }
+            if let error = first.validationError { return "Tandan \(index + 1): \(error)" }
         }
         return nil
     }
@@ -291,7 +294,8 @@ public struct TreeDocument: Codable, Equatable, Identifiable, Sendable {
     public mutating func setMeasurements(_ ref: BoxRef, _ value: Measurements) {
         guard run.type == .bunchWeight,
               let cluster = clusters.first(where: { $0.contains(ref) }) else { return }
-        for member in cluster { edit(member) { $0.measurements = value } }
+        let normalized = value.normalized
+        for member in cluster { edit(member) { $0.measurements = normalized } }
     }
 
     public func canLink(_ source: BoxRef, _ target: BoxRef) -> Bool {
@@ -304,8 +308,8 @@ public struct TreeDocument: Codable, Equatable, Identifiable, Sendable {
 
     @discardableResult
     public mutating func link(_ source: BoxRef, _ target: BoxRef) -> Bool {
-        guard canLink(source, target), let sourceValue = annotation(source)?.measurements,
-              let targetValue = annotation(target)?.measurements else { return false }
+        guard canLink(source, target), let sourceValue = annotation(source)?.measurements.normalized,
+              let targetValue = annotation(target)?.measurements.normalized else { return false }
         let (a, b) = source.side < target.side ? (source, target) : (target, source)
         links.removeAll { $0.a.side == a.side && $0.b.side == b.side && ($0.a == a || $0.b == b) }
         links.append(CrossSideLink(id: "L\(nextLinkID)", a: a, b: b))

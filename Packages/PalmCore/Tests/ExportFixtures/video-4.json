@@ -1,0 +1,308 @@
+{
+  "metadata": {
+    "treeId": 1,
+    "artifactSchemaVersion": 1,
+    "variety": "DAMIMAS",
+    "name": "DAMIMAS_QA6_VID_0001",
+    "blok": "QA6",
+    "captureDate": "2023-11-15",
+    "captureSet": {
+      "schema": 1,
+      "nameToken": "",
+      "captureSetId": "e260f7cb-b4d7-42ad-abe6-5d0ec6bdde57",
+      "deviceToken": "VPAEPK"
+    },
+    "gps": {
+      "provider": "",
+      "source": "NONE",
+      "status": "UNAVAILABLE"
+    },
+    "operator": "UNKNOWN",
+    "timestamp": "2023-11-15T10:00:00.000Z",
+    "artifacts": {
+      "sides": [
+        {
+          "depthRequired": false,
+          "sideIndex": 0,
+          "filename": "DAMIMAS_QA6_VID_0001_1.jpg",
+          "captureOrigin": "PHONE_CAMERA",
+          "rgbSha256": "03c22a84246650c1b7cbb38bf66c0923d29a333c8c89e4bf7ab575a23bdddff8"
+        },
+        {
+          "depthRequired": false,
+          "sideIndex": 1,
+          "filename": "DAMIMAS_QA6_VID_0001_2.jpg",
+          "captureOrigin": "PHONE_CAMERA",
+          "rgbSha256": "adeaec77d1bc772e9694f8b5d7ba0ab621797f61f2587493ba69bd8dbbf09bf1"
+        },
+        {
+          "depthRequired": false,
+          "sideIndex": 2,
+          "filename": "DAMIMAS_QA6_VID_0001_3.jpg",
+          "captureOrigin": "PHONE_CAMERA",
+          "rgbSha256": "88af224f60ebdcd7935cca9185b05737d875525c16f8e4025ae3193902ba3fbb"
+        },
+        {
+          "depthRequired": false,
+          "sideIndex": 3,
+          "filename": "DAMIMAS_QA6_VID_0001_4.jpg",
+          "captureOrigin": "PHONE_CAMERA",
+          "rgbSha256": "2a6b38d94cb91ccb1ba7759f02cfe64bb94ff9caef771fac5c49d07efafdff9a"
+        }
+      ],
+      "video": {
+        "filename": "DAMIMAS_QA6_VID_0001.mp4",
+        "sha256": "682c8224fbe33872b9478aa45480091d833f099209d319a3f3216c7db13979ef",
+        "sizeBytes": 8
+      }
+    }
+  },
+  "manifest": {
+    "metadata": {
+      "file": "DAMIMAS_QA6_VID_0001.json",
+      "sha256": "03ac54b9923916d3831ca8d36df7ab2504a3401ff7f306fd2b78ec56732989f1"
+    },
+    "schemaVersion": 1,
+    "treeName": "DAMIMAS_QA6_VID_0001",
+    "outputJson": {
+      "file": "DAMIMAS_QA6_VID_0001.json",
+      "sha256": "4a0db68a873ffcd28d237df646a1431b82b811ee799ea8ce8d32283b1b2f171d"
+    },
+    "sides": [
+      {
+        "depthRequired": false,
+        "sideIndex": 0,
+        "captureOrigin": "PHONE_CAMERA",
+        "label": {
+          "file": "DAMIMAS_QA6_VID_0001_1.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "rgb": {
+          "file": "DAMIMAS_QA6_VID_0001_1.jpg",
+          "sha256": "03c22a84246650c1b7cbb38bf66c0923d29a333c8c89e4bf7ab575a23bdddff8"
+        }
+      },
+      {
+        "depthRequired": false,
+        "sideIndex": 1,
+        "captureOrigin": "PHONE_CAMERA",
+        "label": {
+          "file": "DAMIMAS_QA6_VID_0001_2.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "rgb": {
+          "file": "DAMIMAS_QA6_VID_0001_2.jpg",
+          "sha256": "adeaec77d1bc772e9694f8b5d7ba0ab621797f61f2587493ba69bd8dbbf09bf1"
+        }
+      },
+      {
+        "depthRequired": false,
+        "sideIndex": 2,
+        "captureOrigin": "PHONE_CAMERA",
+        "label": {
+          "file": "DAMIMAS_QA6_VID_0001_3.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "rgb": {
+          "file": "DAMIMAS_QA6_VID_0001_3.jpg",
+          "sha256": "88af224f60ebdcd7935cca9185b05737d875525c16f8e4025ae3193902ba3fbb"
+        }
+      },
+      {
+        "depthRequired": false,
+        "sideIndex": 3,
+        "captureOrigin": "PHONE_CAMERA",
+        "label": {
+          "file": "DAMIMAS_QA6_VID_0001_4.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "rgb": {
+          "file": "DAMIMAS_QA6_VID_0001_4.jpg",
+          "sha256": "2a6b38d94cb91ccb1ba7759f02cfe64bb94ff9caef771fac5c49d07efafdff9a"
+        }
+      }
+    ],
+    "captureSet": {
+      "schema": 1,
+      "nameToken": "",
+      "captureSetId": "e260f7cb-b4d7-42ad-abe6-5d0ec6bdde57",
+      "deviceToken": "VPAEPK"
+    },
+    "captureSetId": "e86d3936bdfa39ce12e4d20183508eb1b164494671c8d75aed5e3ca370b55bd1",
+    "annotationRevision": "4a53583a22990fdc78a4c283472d53c122122709c63218021506649bcc676eb8"
+  },
+  "csv": "tree_name,split,unique,raw,B1,B2,B3,B4\nDAMIMAS_QA6_VID_0001,test,0,0,0,0,0,0",
+  "tree": "DAMIMAS_QA6_VID_0001",
+  "metadataText": "{\n  \"treeId\": 1,\n  \"artifactSchemaVersion\": 1,\n  \"variety\": \"DAMIMAS\",\n  \"name\": \"DAMIMAS_QA6_VID_0001\",\n  \"blok\": \"QA6\",\n  \"captureDate\": \"2023-11-15\",\n  \"captureSet\": {\n    \"schema\": 1,\n    \"nameToken\": \"\",\n    \"captureSetId\": \"e260f7cb-b4d7-42ad-abe6-5d0ec6bdde57\",\n    \"deviceToken\": \"VPAEPK\"\n  },\n  \"gps\": {\n    \"provider\": \"\",\n    \"source\": \"NONE\",\n    \"status\": \"UNAVAILABLE\"\n  },\n  \"operator\": \"UNKNOWN\",\n  \"timestamp\": \"2023-11-15T10:00:00.000Z\",\n  \"artifacts\": {\n    \"sides\": [\n      {\n        \"depthRequired\": false,\n        \"sideIndex\": 0,\n        \"filename\": \"DAMIMAS_QA6_VID_0001_1.jpg\",\n        \"captureOrigin\": \"PHONE_CAMERA\",\n        \"rgbSha256\": \"03c22a84246650c1b7cbb38bf66c0923d29a333c8c89e4bf7ab575a23bdddff8\"\n      },\n      {\n        \"depthRequired\": false,\n        \"sideIndex\": 1,\n        \"filename\": \"DAMIMAS_QA6_VID_0001_2.jpg\",\n        \"captureOrigin\": \"PHONE_CAMERA\",\n        \"rgbSha256\": \"adeaec77d1bc772e9694f8b5d7ba0ab621797f61f2587493ba69bd8dbbf09bf1\"\n      },\n      {\n        \"depthRequired\": false,\n        \"sideIndex\": 2,\n        \"filename\": \"DAMIMAS_QA6_VID_0001_3.jpg\",\n        \"captureOrigin\": \"PHONE_CAMERA\",\n        \"rgbSha256\": \"88af224f60ebdcd7935cca9185b05737d875525c16f8e4025ae3193902ba3fbb\"\n      },\n      {\n        \"depthRequired\": false,\n        \"sideIndex\": 3,\n        \"filename\": \"DAMIMAS_QA6_VID_0001_4.jpg\",\n        \"captureOrigin\": \"PHONE_CAMERA\",\n        \"rgbSha256\": \"2a6b38d94cb91ccb1ba7759f02cfe64bb94ff9caef771fac5c49d07efafdff9a\"\n      }\n    ],\n    \"video\": {\n      \"filename\": \"DAMIMAS_QA6_VID_0001.mp4\",\n      \"sha256\": \"682c8224fbe33872b9478aa45480091d833f099209d319a3f3216c7db13979ef\",\n      \"sizeBytes\": 8\n    }\n  }\n}",
+  "descriptor": {
+    "schema": 1,
+    "nameToken": "",
+    "appVersion": "test",
+    "generatedAt": "2023-11-15T10:01:00Z",
+    "treeCount": 1,
+    "mergeRule": "Two packages may be extracted into one directory only when no treeName appears in both with a different captureSetId or a different contentDigest. Compare this file, not file timestamps.",
+    "trees": [{
+      "treeName": "DAMIMAS_QA6_VID_0001",
+      "captureSetId": "e260f7cb-b4d7-42ad-abe6-5d0ec6bdde57",
+      "contentDigest": "0bcbf7e22ad77f25061bda661545d3d27efe79e13fb343dda45a378ef8b57e15",
+      "deviceToken": "VPAEPK"
+    }],
+    "captureSetId": "e260f7cb-b4d7-42ad-abe6-5d0ec6bdde57",
+    "deviceToken": "VPAEPK"
+  },
+  "labels": [
+    "",
+    "",
+    "",
+    ""
+  ],
+  "output": {
+    "dataset_type": "MULTISIDE_VIDEO",
+    "summary": {
+      "duplicates_linked": 0,
+      "by_side": {
+        "side_3": 0,
+        "side_2": 0,
+        "side_1": 0,
+        "side_4": 0
+      },
+      "by_class": {
+        "B2": 0,
+        "B3": 0,
+        "B4": 0,
+        "other": 0,
+        "B1": 0
+      },
+      "total_unique_bunches": 0,
+      "total_detections": 0
+    },
+    "_confirmedLinks": [],
+    "metadata": {
+      "date": "2023-11-15",
+      "number": 1,
+      "variety": "DAMIMAS",
+      "gps_status": "UNAVAILABLE",
+      "generated_at": "2023-11-15T10:01:00.000Z",
+      "capture_set_id": "e260f7cb-b4d7-42ad-abe6-5d0ec6bdde57",
+      "device_token": "VPAEPK",
+      "session_id": "20231115-DAMIMAS-QA6-VPAEPK",
+      "operator": "UNKNOWN"
+    },
+    "images": {
+      "side_3": {
+        "depth_required": false,
+        "filename": "DAMIMAS_QA6_VID_0001_3.jpg",
+        "width": 1024,
+        "bbox_count": 0,
+        "capture_origin": "PHONE_CAMERA",
+        "annotations": [],
+        "side_label": "Side 3",
+        "rgb_sha256": "88af224f60ebdcd7935cca9185b05737d875525c16f8e4025ae3193902ba3fbb",
+        "side_index": 2,
+        "label_file": "DAMIMAS_QA6_VID_0001_3.txt",
+        "height": 1024
+      },
+      "side_2": {
+        "depth_required": false,
+        "filename": "DAMIMAS_QA6_VID_0001_2.jpg",
+        "width": 1024,
+        "bbox_count": 0,
+        "capture_origin": "PHONE_CAMERA",
+        "annotations": [],
+        "side_label": "Side 2",
+        "rgb_sha256": "adeaec77d1bc772e9694f8b5d7ba0ab621797f61f2587493ba69bd8dbbf09bf1",
+        "side_index": 1,
+        "label_file": "DAMIMAS_QA6_VID_0001_2.txt",
+        "height": 1024
+      },
+      "side_1": {
+        "depth_required": false,
+        "filename": "DAMIMAS_QA6_VID_0001_1.jpg",
+        "width": 1024,
+        "bbox_count": 0,
+        "capture_origin": "PHONE_CAMERA",
+        "annotations": [],
+        "side_label": "Side 1",
+        "rgb_sha256": "03c22a84246650c1b7cbb38bf66c0923d29a333c8c89e4bf7ab575a23bdddff8",
+        "side_index": 0,
+        "label_file": "DAMIMAS_QA6_VID_0001_1.txt",
+        "height": 1024
+      },
+      "side_4": {
+        "depth_required": false,
+        "filename": "DAMIMAS_QA6_VID_0001_4.jpg",
+        "width": 1024,
+        "bbox_count": 0,
+        "capture_origin": "PHONE_CAMERA",
+        "annotations": [],
+        "side_label": "Side 4",
+        "rgb_sha256": "2a6b38d94cb91ccb1ba7759f02cfe64bb94ff9caef771fac5c49d07efafdff9a",
+        "side_index": 3,
+        "label_file": "DAMIMAS_QA6_VID_0001_4.txt",
+        "height": 1024
+      }
+    },
+    "split": "test",
+    "tree_id": "DAMIMAS_QA6_VID_0001",
+    "bunches": [],
+    "tree_name": "DAMIMAS_QA6_VID_0001",
+    "version": 4
+  },
+  "identity": {
+    "totalUniqueBunches": 0,
+    "classMismatchCount": 0,
+    "bunches": [],
+    "tree_name": "DAMIMAS_QA6_VID_0001"
+  },
+  "paths": [
+    "capture_set.json",
+    "images/DAMIMAS_QA6_VID_0001_1.jpg",
+    "images/DAMIMAS_QA6_VID_0001_2.jpg",
+    "images/DAMIMAS_QA6_VID_0001_3.jpg",
+    "images/DAMIMAS_QA6_VID_0001_4.jpg",
+    "json/DAMIMAS_QA6_VID_0001.json",
+    "labels/DAMIMAS_QA6_VID_0001_1.txt",
+    "labels/DAMIMAS_QA6_VID_0001_2.txt",
+    "labels/DAMIMAS_QA6_VID_0001_3.txt",
+    "labels/DAMIMAS_QA6_VID_0001_4.txt",
+    "manifests/DAMIMAS_QA6_VID_0001.json",
+    "metadata/DAMIMAS_QA6_VID_0001.json",
+    "video/DAMIMAS_QA6_VID_0001.mp4"
+  ],
+  "outputText": "{\n  \"dataset_type\": \"MULTISIDE_VIDEO\",\n  \"summary\": {\n    \"duplicates_linked\": 0,\n    \"by_side\": {\n      \"side_3\": 0,\n      \"side_2\": 0,\n      \"side_1\": 0,\n      \"side_4\": 0\n    },\n    \"by_class\": {\n      \"B2\": 0,\n      \"B3\": 0,\n      \"B4\": 0,\n      \"other\": 0,\n      \"B1\": 0\n    },\n    \"total_unique_bunches\": 0,\n    \"total_detections\": 0\n  },\n  \"_confirmedLinks\": [],\n  \"metadata\": {\n    \"date\": \"2023-11-15\",\n    \"number\": 1,\n    \"variety\": \"DAMIMAS\",\n    \"gps_status\": \"UNAVAILABLE\",\n    \"generated_at\": \"2023-11-15T10:01:00.000Z\",\n    \"capture_set_id\": \"e260f7cb-b4d7-42ad-abe6-5d0ec6bdde57\",\n    \"device_token\": \"VPAEPK\",\n    \"session_id\": \"20231115-DAMIMAS-QA6-VPAEPK\",\n    \"operator\": \"UNKNOWN\"\n  },\n  \"images\": {\n    \"side_3\": {\n      \"depth_required\": false,\n      \"filename\": \"DAMIMAS_QA6_VID_0001_3.jpg\",\n      \"width\": 1024,\n      \"bbox_count\": 0,\n      \"capture_origin\": \"PHONE_CAMERA\",\n      \"annotations\": [],\n      \"side_label\": \"Side 3\",\n      \"rgb_sha256\": \"88af224f60ebdcd7935cca9185b05737d875525c16f8e4025ae3193902ba3fbb\",\n      \"side_index\": 2,\n      \"label_file\": \"DAMIMAS_QA6_VID_0001_3.txt\",\n      \"height\": 1024\n    },\n    \"side_2\": {\n      \"depth_required\": false,\n      \"filename\": \"DAMIMAS_QA6_VID_0001_2.jpg\",\n      \"width\": 1024,\n      \"bbox_count\": 0,\n      \"capture_origin\": \"PHONE_CAMERA\",\n      \"annotations\": [],\n      \"side_label\": \"Side 2\",\n      \"rgb_sha256\": \"adeaec77d1bc772e9694f8b5d7ba0ab621797f61f2587493ba69bd8dbbf09bf1\",\n      \"side_index\": 1,\n      \"label_file\": \"DAMIMAS_QA6_VID_0001_2.txt\",\n      \"height\": 1024\n    },\n    \"side_1\": {\n      \"depth_required\": false,\n      \"filename\": \"DAMIMAS_QA6_VID_0001_1.jpg\",\n      \"width\": 1024,\n      \"bbox_count\": 0,\n      \"capture_origin\": \"PHONE_CAMERA\",\n      \"annotations\": [],\n      \"side_label\": \"Side 1\",\n      \"rgb_sha256\": \"03c22a84246650c1b7cbb38bf66c0923d29a333c8c89e4bf7ab575a23bdddff8\",\n      \"side_index\": 0,\n      \"label_file\": \"DAMIMAS_QA6_VID_0001_1.txt\",\n      \"height\": 1024\n    },\n    \"side_4\": {\n      \"depth_required\": false,\n      \"filename\": \"DAMIMAS_QA6_VID_0001_4.jpg\",\n      \"width\": 1024,\n      \"bbox_count\": 0,\n      \"capture_origin\": \"PHONE_CAMERA\",\n      \"annotations\": [],\n      \"side_label\": \"Side 4\",\n      \"rgb_sha256\": \"2a6b38d94cb91ccb1ba7759f02cfe64bb94ff9caef771fac5c49d07efafdff9a\",\n      \"side_index\": 3,\n      \"label_file\": \"DAMIMAS_QA6_VID_0001_4.txt\",\n      \"height\": 1024\n    }\n  },\n  \"split\": \"test\",\n  \"tree_id\": \"DAMIMAS_QA6_VID_0001\",\n  \"bunches\": [],\n  \"tree_name\": \"DAMIMAS_QA6_VID_0001\",\n  \"version\": 4\n}",
+  "manifestText": "{\n  \"metadata\": {\n    \"file\": \"DAMIMAS_QA6_VID_0001.json\",\n    \"sha256\": \"03ac54b9923916d3831ca8d36df7ab2504a3401ff7f306fd2b78ec56732989f1\"\n  },\n  \"schemaVersion\": 1,\n  \"treeName\": \"DAMIMAS_QA6_VID_0001\",\n  \"outputJson\": {\n    \"file\": \"DAMIMAS_QA6_VID_0001.json\",\n    \"sha256\": \"4a0db68a873ffcd28d237df646a1431b82b811ee799ea8ce8d32283b1b2f171d\"\n  },\n  \"sides\": [\n    {\n      \"depthRequired\": false,\n      \"sideIndex\": 0,\n      \"captureOrigin\": \"PHONE_CAMERA\",\n      \"label\": {\n        \"file\": \"DAMIMAS_QA6_VID_0001_1.txt\",\n        \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n      },\n      \"rgb\": {\n        \"file\": \"DAMIMAS_QA6_VID_0001_1.jpg\",\n        \"sha256\": \"03c22a84246650c1b7cbb38bf66c0923d29a333c8c89e4bf7ab575a23bdddff8\"\n      }\n    },\n    {\n      \"depthRequired\": false,\n      \"sideIndex\": 1,\n      \"captureOrigin\": \"PHONE_CAMERA\",\n      \"label\": {\n        \"file\": \"DAMIMAS_QA6_VID_0001_2.txt\",\n        \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n      },\n      \"rgb\": {\n        \"file\": \"DAMIMAS_QA6_VID_0001_2.jpg\",\n        \"sha256\": \"adeaec77d1bc772e9694f8b5d7ba0ab621797f61f2587493ba69bd8dbbf09bf1\"\n      }\n    },\n    {\n      \"depthRequired\": false,\n      \"sideIndex\": 2,\n      \"captureOrigin\": \"PHONE_CAMERA\",\n      \"label\": {\n        \"file\": \"DAMIMAS_QA6_VID_0001_3.txt\",\n        \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n      },\n      \"rgb\": {\n        \"file\": \"DAMIMAS_QA6_VID_0001_3.jpg\",\n        \"sha256\": \"88af224f60ebdcd7935cca9185b05737d875525c16f8e4025ae3193902ba3fbb\"\n      }\n    },\n    {\n      \"depthRequired\": false,\n      \"sideIndex\": 3,\n      \"captureOrigin\": \"PHONE_CAMERA\",\n      \"label\": {\n        \"file\": \"DAMIMAS_QA6_VID_0001_4.txt\",\n        \"sha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n      },\n      \"rgb\": {\n        \"file\": \"DAMIMAS_QA6_VID_0001_4.jpg\",\n        \"sha256\": \"2a6b38d94cb91ccb1ba7759f02cfe64bb94ff9caef771fac5c49d07efafdff9a\"\n      }\n    }\n  ],\n  \"captureSet\": {\n    \"schema\": 1,\n    \"nameToken\": \"\",\n    \"captureSetId\": \"e260f7cb-b4d7-42ad-abe6-5d0ec6bdde57\",\n    \"deviceToken\": \"VPAEPK\"\n  },\n  \"captureSetId\": \"e86d3936bdfa39ce12e4d20183508eb1b164494671c8d75aed5e3ca370b55bd1\",\n  \"annotationRevision\": \"4a53583a22990fdc78a4c283472d53c122122709c63218021506649bcc676eb8\"\n}",
+  "logs": [
+    {
+      "sideIndex": 0,
+      "split": "test",
+      "treeName": "DAMIMAS_QA6_VID_0001",
+      "final": [],
+      "savedAt": 1700042460000,
+      "suggestions": []
+    },
+    {
+      "sideIndex": 1,
+      "split": "test",
+      "treeName": "DAMIMAS_QA6_VID_0001",
+      "final": [],
+      "savedAt": 1700042460000,
+      "suggestions": []
+    },
+    {
+      "sideIndex": 2,
+      "split": "test",
+      "treeName": "DAMIMAS_QA6_VID_0001",
+      "final": [],
+      "savedAt": 1700042460000,
+      "suggestions": []
+    },
+    {
+      "sideIndex": 3,
+      "split": "test",
+      "treeName": "DAMIMAS_QA6_VID_0001",
+      "final": [],
+      "savedAt": 1700042460000,
+      "suggestions": []
+    }
+  ]
+}

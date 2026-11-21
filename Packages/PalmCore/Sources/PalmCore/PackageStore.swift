@@ -33,6 +33,12 @@ public enum StoreError: LocalizedError {
     }
 }
 
+private struct ExportArtifactError: LocalizedError {
+    let filename: String
+
+    var errorDescription: String? { "Berkas sampel hilang atau berubah: \(filename)." }
+}
+
 public actor PackageStore {
     private let root: URL
     private let installID: String
@@ -203,11 +209,12 @@ public actor PackageStore {
     public func save(_ document: TreeDocument, markComplete: Bool = false, date: Date = .now) throws -> TreeDocument {
         let previous = try tree(id: document.id)
         guard previous.revision == document.revision else { throw StoreError.staleRevision }
-        if markComplete, let error = document.completionError { throw StoreError.completion(error) }
+        let completionError = document.completionError
+        if markComplete, let completionError { throw StoreError.completion(completionError) }
         var saved = document
         saved.revision += 1
         saved.savedAt = date
-        saved.isComplete = document.run.type == .bunchWeight ? document.completionError == nil : previous.isComplete || markComplete
+        saved.isComplete = document.run.type == .bunchWeight ? completionError == nil : previous.isComplete || markComplete
         try write(saved, to: treeRoot(document.id).appendingPathComponent("document.json"))
         return saved
     }
@@ -232,10 +239,9 @@ public actor PackageStore {
             try? fm.removeItem(at: working)
             throw error
         }
-        let runs = Set(documents.map { $0.run.id })
         let first = documents[0].run
-        let base = runs.count == 1 ? "\(first.variety)_\(first.block)_\(first.captureSet.deviceToken)" : "PalmAnnotate"
-        let target = working.appendingPathComponent(base + "_" + ExportCodec.iso(date).replacingOccurrences(of: ":", with: "") + ".zip")
+        let base = runID == nil ? "PalmAnnotate_all" : "\(first.variety)_\(first.block)"
+        let target = working.appendingPathComponent("\(base)_\(deviceToken)_\(ExportCodec.archiveTimestamp(date)).zip")
         do {
             try await Task.detached(priority: .userInitiated) {
                 try FileManager.default.zipItem(at: contents, to: target, shouldKeepParent: false, compressionMethod: .deflate)
@@ -260,14 +266,25 @@ public actor PackageStore {
             let manifest = try ExportCodec.manifest(tree, output: output, metadata: metadata, labels: labels)
             for (index, side) in tree.sides.enumerated() {
                 let stem = "\(tree.id)_\(side.id + 1)"
-                try fm.linkItem(at: photoURL(treeID: tree.id, side: side.id), to: contents.appendingPathComponent("images/\(stem).jpg"))
+                let image = photoURL(treeID: tree.id, side: side.id)
+                let filename = stem + ".jpg"
+                guard let (size, digest) = try? fileDigest(image), size > 0, digest == side.sha256.lowercased() else {
+                    throw ExportArtifactError(filename: filename)
+                }
+                try fm.linkItem(at: image, to: contents.appendingPathComponent("images/\(filename)"))
                 try labels[index].write(to: contents.appendingPathComponent("labels/\(stem).txt"))
             }
             try output.write(to: contents.appendingPathComponent("json/\(tree.id).json"))
             try metadata.write(to: contents.appendingPathComponent("metadata/\(tree.id).json"))
             try manifest.write(to: contents.appendingPathComponent("manifests/\(tree.id).json"))
-            if let video = tree.video {
-                try fm.linkItem(at: videoURL(treeID: tree.id), to: contents.appendingPathComponent("video/\(video.filename)"))
+            if tree.run.type.requiresVideo {
+                guard let video = tree.video else { throw StoreError.videoRequired }
+                let source = videoURL(treeID: tree.id)
+                let size = try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize
+                guard let size, size > 0, UInt64(size) == video.sizeBytes else {
+                    throw ExportArtifactError(filename: video.filename)
+                }
+                try fm.linkItem(at: source, to: contents.appendingPathComponent("video/\(video.filename)"))
             }
             entries.append(["treeName": tree.id, "captureSetId": tree.run.captureSet.captureSetId,
                             "deviceToken": tree.run.captureSet.deviceToken, "contentDigest": sha256(manifest)])
@@ -277,8 +294,9 @@ public actor PackageStore {
         try ExportCodec.json([
             "schema": 1, "captureSetId": setIDs.count == 1 ? setIDs.first ?? "" : "",
             "deviceToken": deviceToken, "nameToken": nameTokens.count == 1 ? nameTokens.first ?? "" : "",
-            "appVersion": appVersion, "generatedAt": ExportCodec.iso(date), "treeCount": entries.count,
-            "mergeRule": "Merge only when a repeated treeName has the same captureSetId and contentDigest.",
+            "appVersion": appVersion, "generatedAt": ExportCodec.iso(date, fractionalSeconds: false), "treeCount": entries.count,
+            "mergeRule": "Two packages may be extracted into one directory only when no treeName appears in " +
+                "both with a different captureSetId or a different contentDigest. Compare this file, not file timestamps.",
             "trees": entries
         ]).write(to: contents.appendingPathComponent("capture_set.json"))
     }

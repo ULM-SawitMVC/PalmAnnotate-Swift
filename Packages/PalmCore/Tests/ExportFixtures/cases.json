@@ -1,0 +1,63 @@
+[
+  {
+    "name": "multiside-4",
+    "type": "MULTISIDE",
+    "sideCount": 4,
+    "tokenized": true,
+    "boxes": [
+      {"side": 0, "id": "det0", "classId": 1, "rect": [4, 10.5, 12, 42.25]},
+      {"side": 0, "id": "b0", "classId": -1, "rect": [160, 10, 175, 35]},
+      {"side": 1, "id": "det0", "classId": 2, "rect": [12.1, 31.75, 62.33333, 94.5]},
+      {"side": 2, "id": "det0", "classId": 3, "rect": [30, 35, 52, 66]},
+      {"side": 3, "id": "det0", "classId": 0, "rect": [10, 14, 20, 30]}
+    ],
+    "links": [[2, "det0", 3, "det0"], [0, "det0", 3, "det0"], [0, "det0", 1, "det0"]]
+  },
+  {
+    "name": "multiside-8",
+    "type": "MULTISIDE",
+    "sideCount": 8,
+    "boxes": [
+      {"side": 0, "id": "b0", "classId": 0, "rect": [10, 20, 30, 40]},
+      {"side": 7, "id": "b0", "classId": 0, "rect": [20, 20, 30, 40]}
+    ],
+    "links": [[0, "b0", 7, "b0"]]
+  },
+  {
+    "name": "video-8",
+    "type": "MULTISIDE_VIDEO",
+    "sideCount": 8,
+    "tokenized": true,
+    "boxes": [],
+    "links": []
+  },
+  {
+    "name": "weight-2",
+    "type": "BUNCH_WEIGHT",
+    "sideCount": 2,
+    "boxes": [
+      {"side": 0, "id": "det0", "classId": -1, "rect": [12, 14, 35, 40], "weight": 12.0,
+       "height": 0.00001, "circumference": 10000000.0, "notes": "  Mature, \"A\"\r\nChecked  "},
+      {"side": 0, "id": "b0", "classId": -1, "rect": [128, 150, 190, 201], "weight": 3.125},
+      {"side": 1, "id": "det0", "classId": -1, "rect": [24, 27, 36, 42], "weight": 12.0,
+       "height": 0.00001, "circumference": 10000000.0, "notes": "  Mature, \"A\"\r\nChecked  "}
+    ],
+    "links": [[0, "det0", 1, "det0"]]
+  },
+  {
+    "name": "weight-1",
+    "type": "BUNCH_WEIGHT",
+    "sideCount": 1,
+    "boxes": [
+      {"side": 0, "id": "b0", "classId": -1, "rect": [4, 5, 12, 18], "weight": 0.001, "notes": " "}
+    ],
+    "links": []
+  },
+  {
+    "name": "video-4",
+    "type": "MULTISIDE_VIDEO",
+    "sideCount": 4,
+    "boxes": [],
+    "links": []
+  }
+]
