@@ -1,0 +1,41 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  palmcore:
+    name: PalmCore tests
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the newest stable Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)"
+      - run: swift --version
+      - run: swift test --package-path Packages/PalmCore
+
+  app:
+    name: App build
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the newest stable Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)"
+      - run: xcodebuild -version
+      - run: brew install xcodegen
+      - run: ./Scripts/prepare-detector.sh
+      - run: xcodegen generate
+      - name: Build the app and UI tests for the iOS Simulator
+        run: |
+          xcodebuild -project PalmAnnotate.xcodeproj -scheme PalmAnnotate \
+            -destination "generic/platform=iOS Simulator" -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO build-for-testing
