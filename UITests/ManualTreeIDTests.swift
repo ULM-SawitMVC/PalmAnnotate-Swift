@@ -46,7 +46,6 @@ final class ManualTreeIDTests: XCTestCase {
 
     @MainActor
     private func replace(_ field: XCUIElement, with text: String, in app: XCUIApplication) {
-        for _ in 0..<3 where !field.isHittable { app.swipeDown() }
         // The field stays disabled while the screen opens the draft.
         let ready = expectation(for: NSPredicate(format: "isEnabled == true AND isHittable == true"), evaluatedWith: field)
         wait(for: [ready], timeout: 15)

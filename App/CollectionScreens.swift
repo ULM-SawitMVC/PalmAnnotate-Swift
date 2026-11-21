@@ -517,7 +517,7 @@ struct RunDetail: View {
         }
         .navigationTitle("\(run.variety) · \(run.block)")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showCapture, onDismiss: {
+        .fullScreenCover(isPresented: $showCapture, onDismiss: {
             selectedID = pendingCaptureID
             pendingCaptureID = nil
             Task { await load() }

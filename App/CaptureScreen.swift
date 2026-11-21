@@ -11,6 +11,7 @@ struct CaptureScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var camera = CaptureDevice()
     @State private var gps = CaptureLocation()
     @State private var draft: [CapturedPhoto] = []
@@ -139,12 +140,11 @@ struct CaptureScreen: View {
 
     // MARK: Sections
 
-    private var compactHeight: Bool { verticalSizeClass == .compact }
+    private var sideBySide: Bool { verticalSizeClass == .compact || horizontalSizeClass == .regular }
 
     @ViewBuilder
     private var layout: some View {
-        if compactHeight {
-            // A phone in landscape: the photo keeps the full height beside a scrolling control column.
+        if sideBySide {
             HStack(alignment: .top, spacing: 16) {
                 stage.frame(maxWidth: .infinity, maxHeight: .infinity)
                 ScrollView {
@@ -283,7 +283,7 @@ struct CaptureScreen: View {
             reviewPager(selection: reviewedSide)
         } else if ready {
             CameraPreview(camera: camera).aspectRatio(4 / 3, contentMode: .fit)
-                .frame(maxHeight: compactHeight ? .infinity : 360).clipShape(.rect(cornerRadius: 12))
+                .frame(maxHeight: sideBySide ? .infinity : 360).clipShape(.rect(cornerRadius: 12))
                 .accessibilityLabel("Pratinjau kamera")
         } else if let captureError {
             VStack(alignment: .leading, spacing: 8) {
@@ -311,7 +311,7 @@ struct CaptureScreen: View {
             }
         }
         .tabViewStyle(.page(indexDisplayMode: draft.count > 1 ? .always : .never))
-        .frame(height: compactHeight ? nil : 420)
+        .frame(height: sideBySide ? nil : 420)
         .background(.black, in: .rect(cornerRadius: 12))
         .overlay(alignment: .topLeading) {
             Text("Foto \(selection + 1)/\(run.sideCount)")
