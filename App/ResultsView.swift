@@ -10,13 +10,17 @@ struct ResultsView: View {
     @State private var annotationLogs: [URL] = []
     @State private var error: String?
     @State private var qualityReport: QualityCheck.Report?
+    @State private var showMismatch = false
 
     var body: some View {
         NavigationStack {
             List {
                 Section("Ringkasan") {
+                    let total = document.sides.flatMap(\.annotations).count
                     LabeledContent("Tandan unik", value: "\(document.clusters.count)")
-                    LabeledContent("Kotak anotasi", value: "\(document.sides.flatMap(\.annotations).count)")
+                    LabeledContent("Total deteksi", value: "\(total)")
+                    LabeledContent("Duplikat tertaut", value: "\(total - document.clusters.count)")
+                        .accessibilityIdentifier("results-linked-duplicates")
                     if document.run.type == .multiside {
                         let counts = ExportCodec.classCounts(document)
                         ForEach(Ripeness.allCases) { value in
@@ -25,20 +29,19 @@ struct ResultsView: View {
                         }
                     }
                 }
-                if document.run.type == .multiside {
-                    let conflicting = document.clusters.enumerated().filter {
-                        Set($0.element.compactMap { document.annotation($0)?.ripeness }).count > 1
+                Section("Per sisi") {
+                    ForEach(document.sides) { side in
+                        LabeledContent("Foto \(side.id + 1)", value: "\(side.annotations.count)")
                     }
-                    if !conflicting.isEmpty {
-                        Section("Perbedaan kelas") {
-                            ForEach(conflicting, id: \.offset) { index, refs in
-                                Menu("Tandan \(index + 1)") {
-                                    ForEach(Ripeness.allCases.filter { $0 != .unassigned }) { value in
-                                        Button(value.label) { resolve(refs, as: value) }
-                                    }
-                                }
-                            }
-                        }
+                }
+                let mismatches = document.classMismatches()
+                if !mismatches.isEmpty {
+                    Section("Perbedaan kelas") {
+                        Label("\(mismatches.count) tandan memiliki kelas yang tidak konsisten antar sisi.",
+                              systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                        Button("Selesaikan perbedaan kelas", systemImage: "checklist") { showMismatch = true }
+                            .accessibilityIdentifier("results-resolve-mismatch")
                     }
                 }
                 Section("Ekspor sampel") {
@@ -48,21 +51,28 @@ struct ResultsView: View {
                         ShareLink(items: annotationLogs) { Label("Bagikan log anotasi", systemImage: "list.bullet.rectangle") }
                     }
                     Button("Siapkan berkas", action: requestExport)
-                        .disabled(!document.isComplete)
-                    if !document.isComplete { Text("Selesaikan sampel agar dapat diekspor.").foregroundStyle(.secondary) }
+                    if !document.isComplete {
+                        Text("Sampel masih draf. Berkas tetap dapat disiapkan, tetapi periksa hasilnya terlebih dahulu.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .navigationTitle("Hasil")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Tutup") { dismiss() } } }
             .modifier(ErrorAlert(message: $error))
+            .sheet(isPresented: $showMismatch) {
+                MismatchResolutionSheet(mismatches: document.classMismatches(), applyTitle: "Terapkan") { choices in
+                    resolve(choices)
+                }
+            }
             .qualityReview($qualityReport, question: "Ekspor tetap?", continueTitle: "Ekspor tetap", onContinue: prepare)
         }
     }
 
-    private func resolve(_ refs: [BoxRef], as value: Ripeness) {
+    private func resolve(_ choices: [String: Ripeness]) {
         var updated = document
-        for ref in refs { updated.setRipeness(ref, ripeness: value) }
+        updated.resolveClassMismatches(choices)
         Task {
             do {
                 document = try await store.save(updated)
@@ -83,8 +93,8 @@ struct ResultsView: View {
         do {
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let csv = folder.appendingPathComponent(document.id + ".csv")
-            let identity = folder.appendingPathComponent(document.id + "-identity.json")
+            let csv = folder.appendingPathComponent(document.id + "_result.csv")
+            let identity = folder.appendingPathComponent(document.id + "_identity.json")
             try ExportCodec.csv(document).write(to: csv, options: .atomic)
             try ExportCodec.identity(document).write(to: identity, options: .atomic)
             let logs = try document.sides.map { side in

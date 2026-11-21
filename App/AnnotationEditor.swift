@@ -1,4 +1,3 @@
-import ImageIO
 import PalmCore
 import SwiftUI
 
@@ -9,8 +8,10 @@ struct AnnotationEditor: View {
     /// Completes the sample and asks the session screen to open the next capture.
     var onNext: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var document: TreeDocument?
-    @State private var images: [Int: UIImage] = [:]
+    @State private var cache = SideImageCache()
+    @State private var unreadable: Set<Int> = []
     @State private var side = 0
     @State private var pagerSide: Int?
     @State private var selected: BoxRef?
@@ -20,9 +21,14 @@ struct AnnotationEditor: View {
     @State private var showBoxes = true
     @State private var reverseSwipe: Bool?
     @State private var viewports: [Int: Viewport] = [:]
-    @State private var showMeasurements = false
     @State private var showResults = false
     @State private var showSuggestions = false
+    @State private var showResultsAfterDedup = false
+    @State private var showMismatch = false
+    @State private var draft = MeasurementDraft()
+    @FocusState private var field: MeasurementField?
+    @State private var toast: String?
+    @State private var toastToken = UUID()
     @State private var error: String?
     @State private var status: String?
     @State private var savedPulse = false
@@ -41,70 +47,141 @@ struct AnnotationEditor: View {
         .navigationTitle(id)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: exit) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.backward").fontWeight(.semibold)
+                        Text("Kembali")
+                    }
+                }
+                .disabled(saving || detecting)
+                .accessibilityIdentifier("editor-back")
+            }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Deteksi", systemImage: "sparkles", action: detect)
                     .disabled(document == nil || saving || detecting)
-                Button("Hasil", systemImage: "chart.bar") { showResults = true }.disabled(document == nil || saving)
+                Button("Hasil", systemImage: "chart.bar") { showResults = true }
+                    .disabled(document == nil || saving || detecting)
             }
-        }
-        .sheet(isPresented: $showMeasurements) {
-            if let document, let selected, let box = document.annotation(selected) {
-                MeasurementForm(number: number(of: selected, in: document), value: box.measurements) { value in
-                    persist { $0.setMeasurements(selected, value) }
-                }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Selesai") { field = nil }
             }
         }
         .sheet(isPresented: $showResults, onDismiss: { Task { await load() } }) {
             if let document { ResultsView(document: document, store: store) }
         }
-        .sheet(isPresented: $showSuggestions) {
+        .sheet(isPresented: $showSuggestions, onDismiss: {
+            guard showResultsAfterDedup else { return }
+            showResultsAfterDedup = false
+            showResults = true
+        }) {
             if let document {
-                LinkSuggestionSheet(document: document, clockwise: $clockwise) { pairs in
+                DedupSheet(document: document, clockwise: $clockwise, busy: saving,
+                           onAccept: { items in
                     persistWithStatus { tree in
                         var accepted = 0
-                        for (a, b) in pairs where tree.canLink(a, b) {
-                            tree.link(a, b)
+                        for item in items where tree.canLink(item.a, item.b) {
+                            tree.link(item.a, item.b)
                             accepted += 1
                         }
                         return "\(accepted) tautan tersimpan."
+                    }
+                }, onRemove: { id in
+                    persistWithStatus { $0.unlink(id); return "Tautan dilepas." }
+                }, onCompute: { choices in
+                    persistWithStatus(then: {
+                        showResultsAfterDedup = true
+                        showSuggestions = false
+                    }) { tree in
+                        tree.resolveClassMismatches(choices)
+                        return "Tautan dan kelas tersimpan."
+                    }
+                })
+            }
+        }
+        .sheet(isPresented: $showMismatch) {
+            if let document {
+                MismatchResolutionSheet(mismatches: document.classMismatches(), applyTitle: "Terapkan") { choices in
+                    persistWithStatus { tree in
+                        tree.resolveClassMismatches(choices)
+                        return "Kelas tandan diseragamkan."
                     }
                 }
             }
         }
         .task { await load() }
         .modifier(ErrorAlert(message: $error))
-        .navigationBarBackButtonHidden(saving)
+        .navigationBarBackButtonHidden(true)
+        .onChange(of: selected) { _, value in
+            guard let document, let value, document.run.type == .bunchWeight,
+                  let box = document.annotation(value) else { return }
+            draft = MeasurementDraft(box.measurements)
+        }
+        .onChange(of: selectedMeasurements) { _, value in
+            guard let value else { return }
+            draft = MeasurementDraft(value, optionalOpen: draft.optionalOpen)
+        }
+        .onChange(of: side) { _, value in
+            Task {
+                await loadImage(value)
+                await loadImage(value + 1)
+                await loadImage(value - 1)
+            }
+        }
+    }
+
+    private var selectedMeasurements: Measurements? {
+        guard let document, document.run.type == .bunchWeight, let selected else { return nil }
+        return document.annotation(selected)?.measurements
     }
 
     // MARK: Layout
 
     private func editor(_ tree: TreeDocument) -> some View {
-        GeometryReader { proxy in
+        let panel = measurementTarget(tree)
+        return GeometryReader { proxy in
             if proxy.size.width > proxy.size.height {
                 HStack(alignment: .top, spacing: 12) {
                     photoPanel(tree)
-                    ScrollView {
-                        controls(tree).padding(.vertical, 8)
-                    }
-                    .frame(width: min(380, proxy.size.width * 0.4))
+                    controlsColumn(tree, panel: panel)
+                        .frame(width: min(380, proxy.size.width * 0.4))
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 8)
             } else {
                 VStack(spacing: 8) {
                     photoPanel(tree)
-                        .frame(height: max(220, proxy.size.height * 0.55))
+                        .frame(height: field == nil ? max(220, proxy.size.height * 0.55) : max(120, proxy.size.height * 0.3))
                         .padding(.horizontal)
-                    ScrollView {
-                        controls(tree).padding(.horizontal).padding(.bottom)
-                    }
-                    .frame(maxWidth: 760)
+                    controlsColumn(tree, panel: panel)
+                        .frame(maxWidth: 760)
                 }
                 .frame(maxWidth: .infinity)
             }
         }
         .disabled(saving)
     }
+
+    /// The selected box of a bunch weight sample. Like Kotlin, selecting one opens the measurement panel.
+    private func measurementTarget(_ tree: TreeDocument) -> BoxRef? {
+        guard tree.run.type == .bunchWeight, let selected, pendingLink == nil, tree.annotation(selected) != nil else { return nil }
+        return selected
+    }
+
+    private func controlsColumn(_ tree: TreeDocument, panel: BoxRef?) -> some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                controls(tree, panel: panel).padding(.vertical, 8).padding(.horizontal, isLandscape ? 0 : 16)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            if panel != nil {
+                MeasurementApplyBar(error: draft.error, disabled: saving || detecting, onApply: applyMeasurements)
+            }
+        }
+    }
+
+    private var isLandscape: Bool { verticalSizeClass == .compact }
 
     private func photoPanel(_ tree: TreeDocument) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -166,12 +243,26 @@ struct AnnotationEditor: View {
 
     @ViewBuilder
     private func page(_ tree: TreeDocument, _ item: CaptureSide) -> some View {
-        if let image = images[item.id] {
-            AnnotationCanvas(
+        Group {
+            if let image = cache.image(item.id) {
+                canvas(tree, item, image)
+            } else if unreadable.contains(item.id) {
+                ContentUnavailableView("Foto tidak dapat dibaca", systemImage: "photo")
+                    .foregroundStyle(.white)
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .task(id: item.id) { await loadImage(item.id) }
+    }
+
+    private func canvas(_ tree: TreeDocument, _ item: CaptureSide, _ image: UIImage) -> some View {
+        AnnotationCanvas(
                 image: image, side: item, selected: item.id == side ? selected?.box : nil,
                 linkSource: pendingLink?.side == item.id ? pendingLink?.box : nil,
                 editing: mode == .edit, drawing: drawing && item.id == side, showBoxes: showBoxes,
-                labels: labels(tree, side: item.id), weighted: tree.run.type == .bunchWeight,
+                labels: labels(tree, side: item.id), linkGroups: linkGroups(tree, side: item.id),
+                weighted: tree.run.type == .bunchWeight,
                 viewport: Binding(get: { viewports[item.id] ?? Viewport() }, set: { viewports[item.id] = $0 }),
                 onTap: { tap(box: $0, side: item.id) },
                 onGrab: { selected = BoxRef(side: item.id, box: $0) },
@@ -182,10 +273,6 @@ struct AnnotationEditor: View {
                 },
                 onChange: { box, rect in persist { $0.changeBox(BoxRef(side: item.id, box: box), rect: rect) } })
             .accessibilityIdentifier(item.id == side ? "annotation-photo" : "annotation-photo-\(item.id + 1)")
-        } else {
-            ContentUnavailableView("Foto tidak dapat dibaca", systemImage: "photo")
-                .foregroundStyle(.white)
-        }
     }
 
     private func countBadge(_ tree: TreeDocument) -> some View {
@@ -248,6 +335,17 @@ struct AnnotationEditor: View {
                     .foregroundStyle(.black)
                     .accessibilityIdentifier("link-hint")
             }
+            if let toast {
+                Text(toast)
+                    .font(.callout.bold())
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.black.opacity(0.85), in: .rect(cornerRadius: 10))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("link-replaced-toast")
+            }
             if savedPulse {
                 Label("Tersimpan", systemImage: "checkmark")
                     .font(.callout.bold())
@@ -265,29 +363,37 @@ struct AnnotationEditor: View {
     // MARK: Controls
 
     @ViewBuilder
-    private func controls(_ tree: TreeDocument) -> some View {
+    private func controls(_ tree: TreeDocument, panel: BoxRef?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Picker("Mode", selection: Binding(get: { mode }, set: setMode)) {
-                    Text("Tinjau").tag(EditorMode.review)
-                    Text("Edit").tag(EditorMode.edit)
+            if field == nil {
+                HStack {
+                    Picker("Mode", selection: Binding(get: { mode }, set: setMode)) {
+                        Text("Tinjau").tag(EditorMode.review)
+                        Text("Edit").tag(EditorMode.edit)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 220)
+                    Toggle("Tampilkan kotak", systemImage: showBoxes ? "eye" : "eye.slash", isOn: $showBoxes)
+                        .toggleStyle(.button)
+                        .labelStyle(.iconOnly)
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 220)
-                Toggle("Tampilkan kotak", systemImage: showBoxes ? "eye" : "eye.slash", isOn: $showBoxes)
-                    .toggleStyle(.button)
-                    .labelStyle(.iconOnly)
+                if mode == .edit {
+                    Toggle("Gambar kotak", systemImage: "crop", isOn: $drawing)
+                        .toggleStyle(.button)
+                        .onChange(of: drawing) { _, value in if value { pendingLink = nil } }
+                }
+                if detecting { ProgressView("Mendeteksi tandan…") }
+                if tree.run.type == .multiside {
+                    ripenessBar(tree)
+                }
             }
-            if mode == .edit {
-                Toggle("Gambar kotak", systemImage: "crop", isOn: $drawing)
-                    .toggleStyle(.button)
-                    .onChange(of: drawing) { _, value in if value { pendingLink = nil } }
-            }
-            if detecting { ProgressView("Mendeteksi tandan…") }
-            if tree.run.type == .multiside {
-                ripenessBar(tree)
-            }
-            if let pendingLink {
+            if let panel, let box = tree.annotation(panel) {
+                MeasurementFields(number: number(of: panel, in: tree), draft: $draft, focus: $field) {
+                    field = nil
+                    selected = nil
+                }
+                if field == nil { selectionActions(tree, selected: panel, box: box) }
+            } else if let pendingLink {
                 Button("Batalkan tautan", systemImage: "xmark", role: .destructive) {
                     self.pendingLink = nil
                 }
@@ -295,18 +401,32 @@ struct AnnotationEditor: View {
             } else if let selected, let box = tree.annotation(selected) {
                 selectionActions(tree, selected: selected, box: box)
             }
-            if let status {
-                Text(status).foregroundStyle(.secondary).accessibilityIdentifier("save-status")
+            if field == nil {
+                if let status {
+                    Text(status).foregroundStyle(.secondary).accessibilityIdentifier("save-status")
+                }
+                if tree.run.type == .bunchWeight, panel == nil, let error = tree.completionError {
+                    Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
+                }
+                if tree.run.type == .multiside {
+                    let mismatches = tree.classMismatches()
+                    if !mismatches.isEmpty {
+                        Button("Selesaikan perbedaan kelas (\(mismatches.count))", systemImage: "exclamationmark.triangle") {
+                            showMismatch = true
+                        }
+                        .tint(.orange)
+                        .accessibilityIdentifier("resolve-mismatch")
+                    }
+                }
+                if tree.run.type == .multiside && tree.sides.count > 1 {
+                    Button("Dedup", systemImage: "link.badge.plus") { showSuggestions = true }
+                        .disabled(detecting)
+                        .accessibilityIdentifier("open-dedup")
+                    Toggle("Geser ke kanan untuk foto berikutnya", isOn: Binding(
+                        get: { reverseSwipe ?? true }, set: { reverseSwipe = $0 }))
+                }
+                if panel == nil { exitActions(tree) }
             }
-            if tree.run.type == .bunchWeight, let error = tree.completionError {
-                Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
-            }
-            if tree.run.type == .multiside && tree.sides.count > 1 {
-                Button("Tinjau saran tautan", systemImage: "link.badge.plus") { showSuggestions = true }
-                Toggle("Geser ke kanan untuk foto berikutnya", isOn: Binding(
-                    get: { reverseSwipe ?? true }, set: { reverseSwipe = $0 }))
-            }
-            exitActions(tree)
         }
         .buttonStyle(.bordered)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -338,13 +458,8 @@ struct AnnotationEditor: View {
 
     private func selectionActions(_ tree: TreeDocument, selected: BoxRef, box: Annotation) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Tandan \(number(of: selected, in: tree))").font(.headline)
-            if tree.run.type == .bunchWeight {
-                if let weight = box.measurements.weightKg {
-                    Text("\(weight.formatted()) kg")
-                }
-                Button("Ukuran tandan", systemImage: "scalemass") { showMeasurements = true }
-                    .buttonStyle(.borderedProminent)
+            if tree.run.type != .bunchWeight {
+                Text("Tandan \(number(of: selected, in: tree))").font(.headline)
             }
             if tree.sides.count > 1 {
                 Button("Tautkan ke foto lain", systemImage: "link") { armLink(from: selected, in: tree) }
@@ -366,6 +481,7 @@ struct AnnotationEditor: View {
                 }
             }
             Button("Hapus kotak", systemImage: "trash", role: .destructive) {
+                field = nil
                 persist { $0.deleteBox(selected); self.selected = nil }
             }
         }
@@ -375,17 +491,20 @@ struct AnnotationEditor: View {
     private func exitActions(_ tree: TreeDocument) -> some View {
         Divider()
         if tree.run.type == .bunchWeight {
-            Button("Simpan draf & keluar", systemImage: "tray.and.arrow.down") { dismiss() }
+            Button("Simpan draf & keluar", systemImage: "tray.and.arrow.down", action: exit)
+                .disabled(detecting)
             Button(onNext == nil ? "Selesaikan sampel" : "Simpan & sampel berikutnya", systemImage: "checkmark.circle") {
                 finish(next: onNext != nil)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(tree.completionError != nil)
+            .disabled(tree.completionError != nil || detecting)
         } else {
             Button("Simpan & keluar", systemImage: "checkmark.circle") { finish(next: false) }
                 .buttonStyle(.borderedProminent)
+                .disabled(detecting)
             if onNext != nil {
                 Button("Pohon berikutnya", systemImage: "arrow.right.circle") { finish(next: true) }
+                    .disabled(detecting)
             }
         }
     }
@@ -434,16 +553,59 @@ struct AnnotationEditor: View {
         pendingLink = nil
         if side != target.side { show(side: target.side, animated: true) }
         selected = target
+        var replaced = false
         persistWithStatus { tree in
-            tree.link(source, target) ? "Tertaut. Ukuran dari foto lain menggantikan nilai pada tandan ini." : "Tautan tersimpan."
+            replaced = tree.link(source, target)
+            return "Tautan tersimpan."
+        }
+        if replaced { showToast("Tertaut. Ukuran dari foto lain menggantikan nilai pada tandan ini.") }
+    }
+
+    /// Kotlin `exitTree`: Back on a Multisisi sample saves and completes it; on a Berat Tandan sample it
+    /// saves a draft, because completion there follows from the weights.
+    private func exit() {
+        guard !saving, !detecting else { return }
+        guard let document else {
+            dismiss()
+            return
+        }
+        field = nil
+        if document.run.type == .bunchWeight {
+            persist(then: { dismiss() }) { _ in }
+        } else {
+            finish(next: false)
         }
     }
 
     private func finish(next: Bool) {
+        guard !detecting else { return }
         persist(markComplete: true, then: {
             dismiss()
             if next { onNext?() }
         }) { _ in }
+    }
+
+    private func applyMeasurements() {
+        guard let selected, !saving else { return }
+        switch draft.parsed() {
+        case let .success(value):
+            draft.error = nil
+            field = nil
+            persist { $0.setMeasurements(selected, value) }
+        case let .failure(error):
+            draft.error = error.message
+        }
+    }
+
+    private func showToast(_ message: String) {
+        let token = UUID()
+        toastToken = token
+        withAnimation { toast = message }
+        Task {
+            try? await Task.sleep(for: .seconds(3.5))
+            guard toastToken == token else { return }
+            withAnimation { toast = nil }
+        }
     }
 
     private func zoom(by factor: CGFloat) {
@@ -456,7 +618,7 @@ struct AnnotationEditor: View {
     }
 
     private func detect() {
-        guard let tree = document else { return }
+        guard let tree = document, !saving, !detecting else { return }
         let target = side
         let info = tree.sides[target]
         detecting = true
@@ -466,16 +628,18 @@ struct AnnotationEditor: View {
                 let url = await store.photoURL(treeID: id, side: target)
                 let jpeg = try Data(contentsOf: url)
                 let found = try await Detector.shared.detect(CapturedPhoto(jpeg: jpeg, width: info.width, height: info.height))
-                guard let latest = document else { return }
-                let existing = latest.sides[target].annotations.map(\.rect)
-                let fresh = found.filter { candidate in !existing.contains { $0.iou(candidate.rect) > 0.5 } }
-                guard !fresh.isEmpty else {
+                // The operator may have swiped away while the model ran: merge into the side it ran on, using its
+                // latest boxes, and drop the result if that side's photo is no longer the one that was analysed.
+                guard let latest = document, latest.sides.indices.contains(target),
+                      latest.sides[target].sha256 == info.sha256 else { return }
+                var probe = latest
+                guard !probe.mergeDetections(side: target, found).isEmpty else {
                     status = "Deteksi tidak menemukan tandan baru pada Foto \(target + 1)."
                     return
                 }
                 persistWithStatus { tree in
-                    for box in fresh { tree.addBox(side: target, rect: box.rect) }
-                    return "\(fresh.count) kotak baru dari deteksi pada Foto \(target + 1)."
+                    let added = tree.mergeDetections(side: target, found).count
+                    return "\(added) kotak baru dari deteksi pada Foto \(target + 1)."
                 }
             } catch {
                 self.error = error.localizedDescription + " Anotasi manual tetap dapat dilakukan."
@@ -522,19 +686,23 @@ struct AnnotationEditor: View {
     private func load() async {
         do {
             let tree = try await store.tree(id: id)
-            if images.isEmpty {
-                var decoded: [Int: UIImage] = [:]
-                for side in tree.sides {
-                    let url = await store.photoURL(treeID: id, side: side.id)
-                    decoded[side.id] = displayImage(url)
-                }
-                images = decoded
-            }
             document = tree
             if pagerSide == nil { pagerSide = side }
+            await loadImage(side)
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    /// Decodes one side's photo on first use. Neighbours load as the pager reaches them.
+    private func loadImage(_ index: Int) async {
+        guard document?.sides.indices.contains(index) ?? true, index >= 0 else { return }
+        if cache.image(index) != nil {
+            cache.touch(index)
+            return
+        }
+        let url = await store.photoURL(treeID: id, side: index)
+        if !(await cache.load(side: index, url: url)) { unreadable.insert(index) }
     }
 
     // MARK: Helpers
@@ -545,21 +713,14 @@ struct AnnotationEditor: View {
         })
     }
 
+    /// Box id to link-group number for one side, so a linked bunch keeps one colour on every photo.
+    private func linkGroups(_ tree: TreeDocument, side: Int) -> [String: Int] {
+        Dictionary(uniqueKeysWithValues: tree.linkGroups().filter { $0.key.side == side }.map { ($0.key.box, $0.value) })
+    }
+
     private func number(of ref: BoxRef, in tree: TreeDocument) -> Int {
         tree.clusters.firstIndex { $0.contains(ref) }.map { $0 + 1 } ?? 0
     }
-}
-
-/// Decodes a display copy no larger than needed for a 12x zoom on a tablet. Boxes stay in full-resolution pixels.
-private func displayImage(_ url: URL) -> UIImage? {
-    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-    let options: [CFString: Any] = [
-        kCGImageSourceCreateThumbnailFromImageAlways: true,
-        kCGImageSourceCreateThumbnailWithTransform: true,
-        kCGImageSourceThumbnailMaxPixelSize: 4096,
-    ]
-    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-    return UIImage(cgImage: image)
 }
 
 func ripenessColor(_ ripeness: Ripeness) -> Color {
@@ -629,6 +790,7 @@ private struct AnnotationCanvas: View {
     let drawing: Bool
     let showBoxes: Bool
     let labels: [String: Int]
+    let linkGroups: [String: Int]
     let weighted: Bool
     @Binding var viewport: Viewport
     let onTap: (String?) -> Void
@@ -639,6 +801,8 @@ private struct AnnotationCanvas: View {
     @State private var preview: PixelBox?
     @State private var pinchBase: Viewport?
 
+    /// Kotlin `TOUCH_TOL_DP`: how far outside a box (in view points) a tap still selects it.
+    private static let touchTolerance: CGFloat = 24
     private static let handleRadius: CGFloat = 22
     private static let minimumDraw: CGFloat = 24
     private static let minimumSide: Float = 5
@@ -677,12 +841,7 @@ private struct AnnotationCanvas: View {
 
     private func tap(_ point: CGPoint, _ transform: ViewTransform) {
         let location = transform.image(point)
-        let tolerance = 8 / transform.scale
-        let hits = side.annotations.filter {
-            location.x >= CGFloat($0.rect.x1) - tolerance && location.x <= CGFloat($0.rect.x2) + tolerance
-                && location.y >= CGFloat($0.rect.y1) - tolerance && location.y <= CGFloat($0.rect.y2) + tolerance
-        }
-        onTap(hits.min { area($0.rect) < area($1.rect) }?.id)
+        onTap(pick(at: location, transform))
     }
 
     private func magnify(_ transform: ViewTransform) -> some Gesture {
@@ -757,12 +916,7 @@ private struct AnnotationCanvas: View {
            let handle = handle(of: box.rect, at: point, transform) {
             return .edit(id: box.id, handle: handle, start: box.rect)
         }
-        let location = transform.image(point)
-        let hits = side.annotations.filter {
-            location.x >= CGFloat($0.rect.x1) && location.x <= CGFloat($0.rect.x2)
-                && location.y >= CGFloat($0.rect.y1) && location.y <= CGFloat($0.rect.y2)
-        }
-        if let box = hits.min(by: { area($0.rect) < area($1.rect) }) {
+        if let id = pick(at: transform.image(point), transform), let box = side.annotations.first(where: { $0.id == id }) {
             onGrab(box.id)
             return .edit(id: box.id, handle: .body, start: box.rect)
         }
@@ -834,7 +988,11 @@ private struct AnnotationCanvas: View {
         viewport = viewport.zoom <= 1.001 ? Viewport() : Viewport(zoom: viewport.zoom, offset: shown.offset)
     }
 
-    private func area(_ box: PixelBox) -> Float { (box.x2 - box.x1) * (box.y2 - box.y1) }
+    /// Image-pixel hit test: the smallest box under the point, else the nearest within the finger tolerance.
+    private func pick(at location: CGPoint, _ transform: ViewTransform) -> String? {
+        BoxHitTest.pick(side.annotations, x: Float(location.x), y: Float(location.y),
+                        tolerance: Float(Self.touchTolerance / transform.scale))
+    }
 
     // MARK: Drawing
 
@@ -846,6 +1004,12 @@ private struct AnnotationCanvas: View {
                 if case let .edit(id, _, _) = drag, id == box.id, let preview { position = preview }
                 let rect = transform.screen(position)
                 let color: Color = active ? .yellow : (weighted ? .green : ripenessColor(box.ripeness))
+                let group = linkGroups[box.id]
+                if let group {
+                    context.stroke(Path(roundedRect: rect.insetBy(dx: -3, dy: -3), cornerRadius: 4),
+                                   with: .color(LinkPalette.color(group)),
+                                   style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
+                }
                 if box.id == linkSource {
                     context.stroke(Path(rect.insetBy(dx: -4, dy: -4)), with: .color(.yellow),
                                    style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
@@ -853,10 +1017,12 @@ private struct AnnotationCanvas: View {
                 context.stroke(Path(rect), with: .color(color), lineWidth: active ? 3 : 2)
                 if let number = labels[box.id] {
                     let label = weighted || box.ripeness == .unassigned ? "\(number)" : "\(number) · \(box.ripeness.label)"
-                    let text = context.resolve(Text(label).font(.caption.bold()).foregroundStyle(.white))
+                    let text = context.resolve(Text(label).font(.caption.bold())
+                        .foregroundStyle(group.map(LinkPalette.textColor) ?? .white))
                     let measured = text.measure(in: CGSize(width: 200, height: 40))
                     let badge = CGRect(x: rect.minX + 3, y: rect.minY + 3, width: measured.width + 6, height: measured.height + 2)
-                    context.fill(Path(roundedRect: badge, cornerRadius: 3), with: .color(.black.opacity(0.6)))
+                    context.fill(Path(roundedRect: badge, cornerRadius: 3),
+                                 with: .color(group.map(LinkPalette.color) ?? .black.opacity(0.6)))
                     context.draw(text, at: CGPoint(x: badge.minX + 3, y: badge.minY + 1), anchor: .topLeading)
                 }
                 if active && editing && !drawing {
@@ -873,185 +1039,6 @@ private struct AnnotationCanvas: View {
         }
         if case .draw = drag, let preview {
             context.stroke(Path(transform.screen(preview)), with: .color(.yellow), style: StrokeStyle(lineWidth: 3, dash: [8, 4]))
-        }
-    }
-}
-
-/// Kotlin `DeduplicationScreen` suggestions: seam matches for every adjacent pair, accepted one by one or together.
-private struct LinkSuggestionSheet: View {
-    let document: TreeDocument
-    @Binding var clockwise: Bool
-    let onAccept: ([(BoxRef, BoxRef)]) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var rejected: Set<String> = []
-
-    private struct Pair: Identifiable {
-        let a: BoxRef
-        let b: BoxRef
-        var id: String { "\(a.side):\(a.box)-\(b.side):\(b.box)" }
-    }
-
-    private var pairs: [Pair] {
-        var seen = Set<String>()
-        var result: [Pair] = []
-        for side in document.sides {
-            for box in side.annotations {
-                let source = BoxRef(side: side.id, box: box.id)
-                for target in document.suggestedLinks(from: source, clockwise: clockwise) {
-                    let (a, b) = source.side < target.side ? (source, target) : (target, source)
-                    let pair = Pair(a: a, b: b)
-                    if seen.insert(pair.id).inserted && !rejected.contains(pair.id) { result.append(pair) }
-                }
-            }
-        }
-        return result.sorted { ($0.a.side, $0.b.side) < ($1.a.side, $1.b.side) }
-    }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Toggle("Arah tangkap searah jarum jam", isOn: $clockwise)
-                }
-                Section("Saran (\(pairs.count))") {
-                    if pairs.isEmpty {
-                        Text("Tidak ada saran tautan untuk pasangan foto ini.").foregroundStyle(.secondary)
-                    }
-                    ForEach(pairs) { pair in
-                        HStack {
-                            Text("Foto \(pair.a.side + 1) · Tandan \(number(pair.a))  ↔  Foto \(pair.b.side + 1) · Tandan \(number(pair.b))")
-                            Spacer()
-                            Button("Tolak", role: .destructive) { rejected.insert(pair.id) }
-                                .buttonStyle(.borderless)
-                            Button("Terima") {
-                                onAccept([(pair.a, pair.b)])
-                                dismiss()
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    }
-                }
-                let links = document.links
-                if !links.isEmpty {
-                    Section("Tautan terkonfirmasi (\(links.count))") {
-                        ForEach(links) { link in
-                            Text("Foto \(link.a.side + 1) · Tandan \(number(link.a))  ↔  Foto \(link.b.side + 1) · Tandan \(number(link.b))")
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Saran tautan")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Tutup") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Terima semua (\(pairs.count))") {
-                        onAccept(pairs.map { ($0.a, $0.b) })
-                        dismiss()
-                    }
-                    .disabled(pairs.isEmpty)
-                }
-            }
-        }
-    }
-
-    private func number(_ ref: BoxRef) -> Int {
-        document.clusters.firstIndex { $0.contains(ref) }.map { $0 + 1 } ?? 0
-    }
-}
-
-private struct MeasurementForm: View {
-    let number: Int
-    let value: Measurements
-    let onSave: (Measurements) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @State private var weight = ""
-    @State private var height = ""
-    @State private var circumference = ""
-    @State private var notes = ""
-    @State private var validation: String?
-
-    var body: some View {
-        NavigationStack {
-            form
-            .navigationTitle("Ukuran tandan \(number)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Batal") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Terapkan", action: apply) }
-            }
-            .onAppear {
-                weight = value.weightKg.map { String($0) } ?? ""
-                height = value.heightCm.map { String($0) } ?? ""
-                circumference = value.circumferenceCm.map { String($0) } ?? ""
-                notes = value.notes ?? ""
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var form: some View {
-        if verticalSizeClass == .compact {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    if let validation { Text(validation).foregroundStyle(.red) }
-                    Grid(horizontalSpacing: 12, verticalSpacing: 8) {
-                        GridRow {
-                            weightField
-                            heightField
-                        }
-                        GridRow {
-                            circumferenceField
-                            notesField
-                        }
-                    }
-                    .textFieldStyle(.roundedBorder)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-            }
-        } else {
-            Form {
-                if let validation { Text(validation).foregroundStyle(.red) }
-                weightField
-                heightField
-                circumferenceField
-                notesField
-            }
-        }
-    }
-
-    private var weightField: some View {
-        TextField("Berat (kg)", text: $weight).keyboardType(.decimalPad)
-    }
-
-    private var heightField: some View {
-        TextField("Tinggi (cm, opsional)", text: $height).keyboardType(.decimalPad)
-    }
-
-    private var circumferenceField: some View {
-        TextField("Lingkar (cm, opsional)", text: $circumference).keyboardType(.decimalPad)
-    }
-
-    private var notesField: some View {
-        TextField("Catatan (opsional)", text: $notes, axis: .vertical)
-    }
-
-    private func apply() {
-        func parse(_ input: String) -> Double? {
-            Double(input.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
-        }
-        let value = Measurements(weightKg: parse(weight), heightCm: parse(height), circumferenceCm: parse(circumference), notes: notes)
-        if !height.trimmingCharacters(in: .whitespaces).isEmpty && value.heightCm == nil {
-            validation = "Masukkan tinggi yang valid."
-        } else if !circumference.trimmingCharacters(in: .whitespaces).isEmpty && value.circumferenceCm == nil {
-            validation = "Masukkan lingkar yang valid."
-        } else if let error = value.validationError {
-            validation = error
-        } else {
-            onSave(value)
-            dismiss()
         }
     }
 }
