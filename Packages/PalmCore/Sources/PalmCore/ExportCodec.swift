@@ -13,27 +13,27 @@ public enum ExportCodec {
         var metadata: [String: Any] = [
             "date": date, "number": tree.number, "generated_at": iso(generatedAt),
             "variety": tree.run.variety, "operator": operatorName(tree),
-            "gps_status": tree.gps.status.rawValue, "capture_set_id": tree.run.captureSet.captureSetId,
-            "device_token": tree.run.captureSet.deviceToken,
-            "session_id": [date.replacingOccurrences(of: "-", with: ""), tree.run.variety,
-                           tree.run.block, tree.run.captureSet.deviceToken].joined(separator: "-")
+            "gps_status": tree.gps.status.rawValue,
+            "session_id": [date.filter(\.isNumber), tree.run.variety.uppercased(), tree.run.block.uppercased(),
+                           tree.run.captureSet.deviceToken.uppercased()].filter { !$0.isEmpty }.joined(separator: "-")
         ]
-        if tree.run.captureSet.deviceToken.isEmpty { metadata.removeValue(forKey: "device_token") }
+        if !tree.run.captureSet.captureSetId.isEmpty { metadata["capture_set_id"] = tree.run.captureSet.captureSetId }
+        if !tree.run.captureSet.deviceToken.isEmpty { metadata["device_token"] = tree.run.captureSet.deviceToken }
         var images: [String: Any] = [:]
         var counts: [String: Int] = [:]
         for side in tree.sides {
             let key = "side_\(side.id + 1)"
             let stem = "\(tree.id)_\(side.id + 1)"
             counts[key] = side.annotations.count
-            images[key] = [
+            var image: [String: Any] = [
                 "filename": "\(stem).jpg", "label_file": "\(stem).txt", "side_index": side.id,
                 "side_label": "Side \(side.id + 1)", "width": side.width, "height": side.height,
-                "bbox_count": side.annotations.count, "rgb_sha256": side.sha256,
+                "bbox_count": side.annotations.count,
                 "capture_origin": "PHONE_CAMERA", "depth_required": false,
                 "annotations": side.annotations.enumerated().map { index, annotation -> [String: Any] in
                     var entry: [String: Any] = [
                         "box_index": index, "bbox_pixel": pixel(annotation.rect),
-                        "bbox_yolo": yolo(annotation.rect, side: side).map { Double(fixed($0)) ?? 0 }
+                        "bbox_yolo": yolo(annotation.rect, side: side).map { $0.isFinite ? Double(fixed($0)) ?? 0 : 0 }
                     ]
                     if !weighted {
                         entry["class_id"] = annotation.ripeness.rawValue
@@ -42,7 +42,11 @@ public enum ExportCodec {
                     entry.merge(measurements(annotation.measurements)) { _, new in new }
                     return entry
                 }
-            ] as [String: Any]
+            ]
+            if side.sha256.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil {
+                image["rgb_sha256"] = side.sha256.lowercased()
+            }
+            images[key] = image
         }
         let bunches = clusters.enumerated().map { index, cluster -> [String: Any] in
             let boxes = cluster.compactMap(tree.annotation)
@@ -65,10 +69,14 @@ public enum ExportCodec {
             if let first = boxes.first { bunch.merge(measurements(first.measurements)) { _, new in new } }
             return bunch
         }
+        var seenLinks: [BoxRef: Set<BoxRef>] = [:]
         let links = tree.links.compactMap { link -> [String: Any]? in
-            let wrap = tree.sides.count > 2 && link.a.side == 0 && link.b.side == tree.sides.count - 1
-            let (a, b) = wrap ? (link.b, link.a) : (link.a, link.b)
+            let (low, high) = link.a.side < link.b.side ? (link.a, link.b) : (link.b, link.a)
+            let wrap = tree.sides.count > 2 && low.side == 0 && high.side == tree.sides.count - 1
+            guard wrap || high.side - low.side == 1 else { return nil }
+            let (a, b) = wrap ? (high, low) : (low, high)
             guard let ia = boxIndex(tree, a), let ib = boxIndex(tree, b) else { return nil }
+            guard seenLinks[a, default: []].insert(b).inserted else { return nil }
             return ["linkId": link.id, "sideA": a.side, "bboxIdA": "b\(ia)", "sideB": b.side, "bboxIdB": "b\(ib)"]
         }
         let rawCount = counts.values.reduce(0, +)
@@ -90,10 +98,12 @@ public enum ExportCodec {
     }
 
     public static func labels(_ side: CaptureSide, type: DatasetType) -> Data {
+        guard side.width > 0, side.height > 0 else { return Data() }
         let weighted = type == .bunchWeight
         let lines = side.annotations.compactMap { box -> String? in
             guard weighted || box.ripeness != .unassigned else { return nil }
-            return ([String(weighted ? 0 : box.ripeness.rawValue)] + yolo(box.rect, side: side).map(fixed))
+            let coordinates = yolo(box.rect, side: side).map { fixed(min(max($0, 0), 1)) }
+            return ([String(weighted ? 0 : box.ripeness.rawValue)] + coordinates)
                 .joined(separator: " ")
         }
         return Data(lines.joined(separator: "\n").utf8)
@@ -110,7 +120,7 @@ public enum ExportCodec {
         if tree.run.type == .bunchWeight {
             let header = "sample_name,split,bunch_id,appearance_count,weight_kg,height_cm,circumference_cm,notes"
             let rows = clusters.enumerated().map { index, cluster in
-                let value = cluster.first.flatMap(tree.annotation)?.measurements ?? Measurements()
+                let value = cluster.first.flatMap(tree.annotation)?.measurements.normalized ?? Measurements()
                 return row([tree.id, tree.run.split, String(index + 1), String(cluster.count),
                             decimal(value.weightKg), decimal(value.heightCm), decimal(value.circumferenceCm), value.notes ?? ""])
             }
@@ -132,7 +142,7 @@ public enum ExportCodec {
             var bunch: [String: Any] = ["id": index + 1, "detections": cluster.compactMap { ref -> [String: Any]? in
                 guard let box = tree.annotation(ref) else { return nil }
                 var detection: [String: Any] = ["side": ref.side, "bboxId": ref.box,
-                    "coords": [box.rect.x1, box.rect.y1, box.rect.x2, box.rect.y2]]
+                    "coords": [box.rect.x1, box.rect.y1, box.rect.x2, box.rect.y2].map(jsonFloat)]
                 if !weighted { detection["class"] = box.ripeness.label }
                 return detection
             }]
@@ -154,11 +164,11 @@ public enum ExportCodec {
         var gps: [String: Any] = ["status": tree.gps.status.rawValue, "source": tree.gps.source, "provider": tree.gps.provider]
         gps["lat"] = tree.gps.latitude
         gps["lng"] = tree.gps.longitude
-        gps["accuracyM"] = tree.gps.accuracyM
+        gps["accuracyM"] = tree.gps.accuracyM.map { Double(Float($0)) }
         gps["fixEpochMs"] = tree.gps.fixTimeMillis
         gps["ageMs"] = tree.gps.ageMs
         if let millis = tree.gps.fixTimeMillis { gps["fixTimestamp"] = iso(Date(timeIntervalSince1970: Double(millis) / 1000)) }
-        var artifacts: [String: Any] = ["sides": tree.sides.map { side in
+        var artifacts: [String: Any] = ["sides": tree.sides.sorted { $0.id < $1.id }.map { side in
             ["sideIndex": side.id, "filename": "\(tree.id)_\(side.id + 1).jpg", "rgbSha256": side.sha256,
              "captureOrigin": "PHONE_CAMERA", "depthRequired": false] as [String: Any]
         }]
@@ -199,17 +209,19 @@ public enum ExportCodec {
 
     static func manifest(_ tree: TreeDocument, output: Data, metadata: Data, labels: [Data]) throws -> Data {
         let outputHash = sha256(output)
-        let labelHashes = labels.map(sha256)
+        let sides = zip(tree.sides, labels).sorted { $0.0.id < $1.0.id }
+        let labelHashes = sides.map { sha256($0.1) }
         return try json([
             "schemaVersion": 1, "treeName": tree.id, "captureSet": captureSet(tree.run.captureSet),
-            "captureSetId": sha256(Data(tree.sides.map { "\($0.id):\($0.sha256)" }.joined(separator: "|").utf8)),
+            "captureSetId": sha256(Data(sides.map { "\($0.0.id):\($0.0.sha256.lowercased())" }.joined(separator: "|").utf8)),
             "annotationRevision": sha256(Data(([outputHash] + labelHashes).joined(separator: "|").utf8)),
             "outputJson": ["file": "\(tree.id).json", "sha256": outputHash],
             "metadata": ["file": "\(tree.id).json", "sha256": sha256(metadata)],
-            "sides": tree.sides.enumerated().map { offset, side -> [String: Any] in
+            "sides": sides.enumerated().map { offset, entry -> [String: Any] in
+                let side = entry.0
                 let stem = "\(tree.id)_\(side.id + 1)"
                 return ["sideIndex": side.id, "captureOrigin": "PHONE_CAMERA", "depthRequired": false,
-                        "rgb": ["file": stem + ".jpg", "sha256": side.sha256],
+                        "rgb": ["file": stem + ".jpg", "sha256": side.sha256.lowercased()],
                         "label": ["file": stem + ".txt", "sha256": labelHashes[offset]]]
             }
         ])
@@ -223,9 +235,17 @@ public enum ExportCodec {
         try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 
-    static func iso(_ date: Date) -> String {
+    static func iso(_ date: Date, fractionalSeconds: Bool = true) -> String {
         let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.formatOptions = [.withInternetDateTime]
+        if fractionalSeconds { formatter.formatOptions.insert(.withFractionalSeconds) }
+        return formatter.string(from: date)
+    }
+
+    static func archiveTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter.string(from: date)
     }
 
@@ -237,7 +257,8 @@ public enum ExportCodec {
     }
 
     private static func operatorName(_ tree: TreeDocument) -> String {
-        tree.run.operatorName.isEmpty ? "UNKNOWN" : tree.run.operatorName
+        let name = tree.run.operatorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "UNKNOWN" : name
     }
 
     private static func boxIndex(_ tree: TreeDocument, _ ref: BoxRef) -> Int? {
@@ -255,7 +276,7 @@ public enum ExportCodec {
         result["weight_kg"] = value.weightKg
         result["height_cm"] = value.heightCm
         result["circumference_cm"] = value.circumferenceCm
-        result["notes"] = value.notes
+        result["notes"] = value.normalized.notes
         return result
     }
 
@@ -263,8 +284,13 @@ public enum ExportCodec {
         [box.x1, box.y1, box.x2, box.y2].map { Int(floor(Double($0) + 0.5)) }
     }
 
+    /// Kotlin boxes a `Float` into org.json, which prints `Float.toString`, the shortest decimal that
+    /// round-trips the 32-bit value. Widening to `Double` first would print `12.100000381469727`.
+    private static func jsonFloat(_ value: Float) -> Double {
+        value.isFinite ? Double("\(value)") ?? Double(value) : 0
+    }
+
     private static func yolo(_ box: PixelBox, side: CaptureSide) -> [Float] {
-        guard side.width > 0, side.height > 0 else { return [0, 0, 0, 0] }
         let w = Float(side.width)
         let h = Float(side.height)
         return [(box.x1 + box.x2) / 2 / w, (box.y1 + box.y2) / 2 / h, (box.x2 - box.x1) / w, (box.y2 - box.y1) / h]
