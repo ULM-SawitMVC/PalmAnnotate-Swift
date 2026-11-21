@@ -2,43 +2,206 @@ import AVKit
 import PalmCore
 import SwiftUI
 
+/// One ZIP export at a time: progress, cancellation, and the hand-off to the share sheet.
+@MainActor @Observable
+final class ExportJob {
+    private(set) var running = false
+    private(set) var done = 0
+    private(set) var total = 0
+    private(set) var treeName = ""
+    private(set) var readyURL: URL?
+    var notice: String?
+    var error: String?
+    private var task: Task<Void, Never>?
+    private var shareOnDismiss = false
+
+    func start(store: PackageStore, runID: String?) {
+        guard !running else { return }
+        discardArchive()
+        running = true
+        (done, total, treeName, notice, error) = (0, 0, "", nil, nil)
+        UIApplication.shared.isIdleTimerDisabled = true
+        task = Task {
+            defer {
+                running = false
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+            do {
+                #if DEBUG
+                // Gives UI tests a window in which the progress sheet is visible and can be cancelled.
+                if ProcessInfo.processInfo.arguments.contains("--ui-test-slow-export") {
+                    try await Task.sleep(for: .seconds(3))
+                }
+                #endif
+                let url = try await store.export(runID: runID, to: FileManager.default.temporaryDirectory,
+                                                 appVersion: appVersion) { done, total, name in
+                    DispatchQueue.main.async { MainActor.assumeIsolated { self.update(done, total, name) } }
+                }
+                readyURL = url
+                shareOnDismiss = true
+            } catch is CancellationError {
+                notice = "Ekspor dibatalkan"
+            } catch StoreError.emptyExport {
+                error = StoreError.emptyExport.errorDescription
+            } catch {
+                self.error = "Ekspor gagal: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func cancel() { task?.cancel() }
+
+    /// Forgets a finished archive once the data it was built from may have changed.
+    func reset() {
+        guard !running else { return }
+        discardArchive()
+        notice = nil
+    }
+
+    func presentShareIfReady() {
+        guard shareOnDismiss, let readyURL else { return }
+        shareOnDismiss = false
+        ShareSheet.present(readyURL)
+    }
+
+    private func update(_ done: Int, _ total: Int, _ name: String) {
+        guard running else { return }
+        self.done = max(self.done, done)
+        self.total = total
+        treeName = name
+    }
+
+    private func discardArchive() {
+        if let readyURL { try? FileManager.default.removeItem(at: readyURL.deletingLastPathComponent()) }
+        readyURL = nil
+        shareOnDismiss = false
+    }
+}
+
+@MainActor
+private enum ShareSheet {
+    static func present(_ url: URL) {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let window = scenes.first(where: { $0.activationState == .foregroundActive })?.keyWindow ?? scenes.first?.keyWindow,
+              var top = window.rootViewController else { return }
+        while let next = top.presentedViewController { top = next }
+        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        controller.popoverPresentationController?.sourceView = top.view
+        controller.popoverPresentationController?.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+        top.present(controller, animated: true)
+    }
+}
+
+private struct ExportProgressSheet: View {
+    let job: ExportJob
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Menyiapkan ZIP…").font(.headline)
+            ProgressView(value: Double(job.done), total: Double(max(job.total, 1)))
+            Text(job.total == 0 ? "Memeriksa berkas…" : "\(job.done)/\(job.total) berkas · \(job.treeName)")
+                .font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("export-status")
+            Text("Biarkan layar tetap menyala sampai selesai.").font(.footnote).foregroundStyle(.secondary)
+            Button("Batal", role: .cancel) { job.cancel() }.buttonStyle(.bordered)
+        }
+        .padding(24)
+        .frame(maxWidth: 480)
+        .interactiveDismissDisabled()
+        .presentationDetents([.height(280)])
+        .accessibilityIdentifier("export-progress")
+    }
+}
+
+private struct ExportPresenter: ViewModifier {
+    @Bindable var job: ExportJob
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: Binding(get: { job.running }, set: { _ in }), onDismiss: { job.presentShareIfReady() }) {
+                ExportProgressSheet(job: job)
+            }
+            .modifier(ErrorAlert(message: $job.error))
+    }
+}
+
+/// The result rows shared by both export entry points.
+private struct ExportResult: View {
+    let job: ExportJob
+    let shareTitle: String
+
+    var body: some View {
+        if let url = job.readyURL {
+            Label("ZIP siap: \(url.lastPathComponent)", systemImage: "checkmark.seal")
+                .accessibilityIdentifier("export-ready")
+            ShareLink(item: url) { Label(shareTitle, systemImage: "square.and.arrow.up") }
+        }
+        if let notice = job.notice {
+            Text(notice).foregroundStyle(.secondary).accessibilityIdentifier("export-notice")
+        }
+    }
+}
+
 struct RunList: View {
     let type: DatasetType
     let store: PackageStore
-    @State private var runs: [CollectionRun] = []
-    @State private var counts: [String: (samples: Int, photos: Int)] = [:]
+    @State private var summaries: [RunSummary] = []
+    @State private var allSamples = 0
     @State private var showNew = false
     @State private var newRun: CollectionRun?
     @State private var pendingRun: CollectionRun?
     @State private var notice: String?
     @State private var error: String?
     @State private var confirmExportAll = false
-    @State private var exporting = false
-    @State private var exportURL: URL?
+    @State private var pendingDelete: RunSummary?
+    @State private var job = ExportJob()
+
+    private var runs: [CollectionRun] { summaries.map(\.run) }
+    private var counts: [String: (samples: Int, photos: Int)] {
+        Dictionary(uniqueKeysWithValues: summaries.map { ($0.id, ($0.treeCount, $0.photoCount)) })
+    }
+    private var sampleNoun: String { type == .bunchWeight ? "sampel" : "pohon" }
 
     var body: some View {
         List {
-            if runs.isEmpty {
+            if summaries.isEmpty {
                 ContentUnavailableView(type == .bunchWeight ? "Belum ada sesi berat" : "Belum ada sesi", systemImage: type.icon,
                                        description: Text("Buat sesi untuk mulai mengumpulkan data."))
+            } else {
+                Section {
+                    HStack {
+                        stat("Sesi", summaries.count)
+                        stat(type == .bunchWeight ? "Sampel" : "Pohon", summaries.reduce(0) { $0 + $1.treeCount })
+                        stat("Foto", summaries.reduce(0) { $0 + $1.photoCount })
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("run-stats")
+                }
             }
-            ForEach(runs) { run in
+            ForEach(summaries) { summary in
+                let run = summary.run
                 NavigationLink {
                     RunDetail(run: run, store: store)
                 } label: {
-                    VStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("\(run.variety) · \(run.block)").font(.headline)
-                        let count = counts[run.id] ?? (0, 0)
-                        Text(type == .bunchWeight ? "\(count.samples) sampel · \(count.photos) foto"
-                             : "\(count.samples) pohon · \(run.sideCount) foto/pohon")
+                        Text(type == .bunchWeight ? "\(summary.treeCount) sampel · \(summary.photoCount) foto"
+                             : "\(summary.treeCount) pohon · \(run.sideCount) foto/pohon")
                             .foregroundStyle(.secondary)
+                        Text(summary.updatedAt, format: .dateTime.day().month(.abbreviated).year().hour().minute())
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-            }
-            if let exportURL {
-                Section {
-                    ShareLink(item: exportURL) { Label("Bagikan ZIP semua sesi", systemImage: "square.and.arrow.up") }
+                .swipeActions {
+                    Button("Hapus", role: .destructive) { pendingDelete = summary }
                 }
+                .contextMenu {
+                    Button("Hapus", systemImage: "trash", role: .destructive) { pendingDelete = summary }
+                }
+            }
+            if job.readyURL != nil || job.notice != nil {
+                Section { ExportResult(job: job, shareTitle: "Bagikan ZIP semua sesi") }
             }
         }
         .navigationTitle(type.title)
@@ -46,12 +209,9 @@ struct RunList: View {
         .toolbar {
             if type != .bunchWeight && !runs.isEmpty {
                 Button("Ekspor semua ZIP", systemImage: "archivebox") { confirmExportAll = true }
-                    .disabled(exporting)
+                    .disabled(job.running)
             }
             Button("Sesi baru", systemImage: "plus") { showNew = true }
-        }
-        .overlay {
-            if exporting { ProgressView("Menyiapkan ZIP…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12)) }
         }
         .sheet(isPresented: $showNew, onDismiss: {
             newRun = pendingRun
@@ -67,9 +227,27 @@ struct RunList: View {
         }
         .alert("Ekspor seluruh dataset?", isPresented: $confirmExportAll) {
             Button("Batal", role: .cancel) {}
-            Button("Ekspor semua ZIP", action: exportAll)
+            Button("Ekspor semua ZIP") { job.start(store: store, runID: nil) }
         } message: {
-            Text("Semua sampel selesai dari setiap sesi dan modul digabung dalam satu ZIP. Proses ini dapat memakan waktu.")
+            Text("Semua \(allSamples) pohon dan sampel dari setiap sesi dan modul digabung dalam satu ZIP (foto, label, JSON). Proses ini dapat memakan waktu; biarkan layar tetap menyala sampai selesai.")
+        }
+        .alert("Hapus sesi?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })) {
+            Button("Batal", role: .cancel) { pendingDelete = nil }
+            Button("Hapus", role: .destructive) {
+                guard let item = pendingDelete else { return }
+                pendingDelete = nil
+                Task {
+                    do {
+                        try await store.deleteRun(id: item.id)
+                        job.reset()
+                        await load()
+                    } catch { self.error = error.localizedDescription }
+                }
+            }
+        } message: {
+            if let item = pendingDelete {
+                Text("Hapus \(item.run.variety) · \(item.run.block) beserta \(item.treeCount) \(sampleNoun)? Foto\(type.requiresVideo ? ", video," : "") dan keluaran tersimpan ikut terhapus. Tindakan ini tidak dapat dibatalkan.")
+            }
         }
         .alert("Sesi dilanjutkan", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
             Button("OK") { notice = nil }
@@ -78,29 +256,26 @@ struct RunList: View {
             RunDetail(run: run, store: store)
         }
         .task { await load() }
+        .modifier(ExportPresenter(job: job))
         .modifier(ErrorAlert(message: $error))
+    }
+
+    private func stat(_ title: String, _ value: Int) -> some View {
+        VStack {
+            Text("\(value)").font(.title2.bold().monospacedDigit())
+            Text(title).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     private func load() async {
         do {
-            runs = try await store.runs(type: type)
-            var result: [String: (Int, Int)] = [:]
-            for run in runs {
-                let trees = try await store.trees(runID: run.id)
-                result[run.id] = (trees.count, trees.reduce(0) { $0 + $1.sides.count })
-            }
-            counts = result
+            summaries = try await store.summaries(type: type)
+            var samples = 0
+            for module in DatasetType.allCases { samples += try await store.summaries(type: module).reduce(0) { $0 + $1.treeCount } }
+            allSamples = samples
         } catch { self.error = error.localizedDescription }
-    }
-
-    private func exportAll() {
-        exporting = true
-        Task {
-            defer { exporting = false }
-            do {
-                exportURL = try await store.export(runID: nil, to: FileManager.default.temporaryDirectory, appVersion: appVersion)
-            } catch { self.error = error.localizedDescription }
-        }
     }
 }
 
@@ -119,6 +294,7 @@ private struct NewRun: View {
     @State private var split = "field"
     @State private var sideCount = 0
     @State private var tokenized = false
+    @State private var autoId = true
     @State private var token = ""
     @State private var error: String?
     @State private var saving = false
@@ -137,7 +313,7 @@ private struct NewRun: View {
     /// Mirrors `PackageStore.createRun`: a started run keeps its naming, and an unstarted one adopts the token.
     private var tokenLocked: Bool {
         guard let match else { return false }
-        return !match.captureSet.nameToken.isEmpty || (counts[match.id]?.samples ?? 0) > 0
+        return !match.captureSet.nameToken.isEmpty || (counts[match.id]?.samples ?? 0) > 0 || match.nextNumber != 1
     }
 
     private var preview: String {
@@ -147,7 +323,8 @@ private struct NewRun: View {
         case .multisideVideo: "VID"
         case .bunchWeight: "BW"
         }
-        let parts = [cleanVariety, cleanBlock, marker, tokenized ? token : nil, "0001"]
+        let number = String(format: "%04d", match?.nextNumber ?? 1)
+        let parts = [cleanVariety, cleanBlock, marker, tokenized ? token : nil, number]
         return parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "_")
     }
 
@@ -163,12 +340,23 @@ private struct NewRun: View {
                     TextField("Nama operator (opsional)", text: $operatorName)
                 }
                 Section("Pengambilan") {
-                    if let match {
+                    if type.sideOptions.count == 1 {
+                        if type == .bunchWeight {
+                            Text("Dua foto per sampel; foto kedua boleh dilewati.").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    } else if let match {
                         LabeledContent("Jumlah foto", value: "\(match.sideCount)")
                     } else {
                         Picker("Jumlah foto", selection: $sideCount) {
                             ForEach(type.sideOptions, id: \.self) { Text("\($0)").tag($0) }
                         }
+                    }
+                    Toggle("ID otomatis", isOn: match.map { .constant($0.autoId) } ?? $autoId)
+                        .disabled(match != nil)
+                        .accessibilityIdentifier("auto-id-toggle")
+                    if !(match?.autoId ?? autoId) {
+                        Text("Nomor \(type == .bunchWeight ? "sampel" : "pohon") diketik sendiri saat pengambilan.")
+                            .font(.footnote).foregroundStyle(.secondary)
                     }
                     Toggle("Tambahkan \(token) ke nama", isOn: tokenLocked ? .constant(!(match?.captureSet.nameToken.isEmpty ?? true)) : $tokenized)
                         .disabled(tokenLocked)
@@ -209,7 +397,8 @@ private struct NewRun: View {
             defer { saving = false }
             do {
                 let run = try await store.createRun(type: type, variety: variety, block: block, operatorName: operatorName,
-                                                    sideCount: match?.sideCount ?? sideCount, split: split, tokenized: tokenized)
+                                                    sideCount: match?.sideCount ?? sideCount, split: split, tokenized: tokenized,
+                                                    autoId: autoId)
                 rememberInput()
                 onSave(run, resumed)
                 dismiss()
@@ -233,6 +422,7 @@ private struct NewRun: View {
         block = defaults.string(forKey: "newRun.block") ?? ""
         operatorName = defaults.string(forKey: "newRun.operator") ?? ""
         tokenized = defaults.bool(forKey: "newRun.tokenized")
+        autoId = defaults.object(forKey: "newRun.autoId") as? Bool ?? true
         let count = defaults.integer(forKey: "newRun.sideCount.\(type.rawValue)")
         if type.sideOptions.contains(count) { sideCount = count }
     }
@@ -243,6 +433,7 @@ private struct NewRun: View {
         defaults.set(cleanBlock, forKey: "newRun.block")
         defaults.set(operatorName.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "newRun.operator")
         defaults.set(tokenized, forKey: "newRun.tokenized")
+        defaults.set(autoId, forKey: "newRun.autoId")
         defaults.set(sideCount, forKey: "newRun.sideCount.\(type.rawValue)")
     }
 }
@@ -257,8 +448,7 @@ struct RunDetail: View {
     @State private var pendingCaptureID: TreeID?
     @State private var nextTreeName = ""
     @State private var error: String?
-    @State private var exportURL: URL?
-    @State private var exporting = false
+    @State private var job = ExportJob()
     @State private var pendingDelete: TreeDocument?
 
     private struct TreeID: Hashable { let value: String }
@@ -281,6 +471,7 @@ struct RunDetail: View {
                 LabeledContent("Foto", value: "\(documents.reduce(0) { $0 + $1.sides.count })")
                 LabeledContent("Selesai", value: "\(documents.filter(\.isComplete).count)")
                 if !run.operatorName.isEmpty { LabeledContent("Operator", value: run.operatorName) }
+                if !run.autoId { LabeledContent("ID \(sampleNoun)", value: "Manual") }
             } header: {
                 Label("\(run.variety) · \(run.block) · terkunci untuk sesi ini", systemImage: "lock")
             }
@@ -313,13 +504,13 @@ struct RunDetail: View {
                     }
                 }
             }
-            if documents.contains(where: \.isComplete) {
+            if !documents.isEmpty {
                 Section {
-                    if let exportURL {
-                        ShareLink(item: exportURL) { Label("Bagikan ZIP", systemImage: "square.and.arrow.up") }
-                    }
-                    Button(exporting ? "Menyiapkan ZIP…" : "Buat ZIP", action: export)
-                        .disabled(exporting)
+                    ExportResult(job: job, shareTitle: "Bagikan ZIP")
+                    Button(job.running ? "Menyiapkan ZIP…" : "Buat ZIP") { job.start(store: store, runID: run.id) }
+                        .disabled(job.running)
+                } footer: {
+                    Text("Semua \(sampleNoun), termasuk yang masih draf, masuk ke ZIP.")
                 }
             }
         }
@@ -358,6 +549,7 @@ struct RunDetail: View {
                 Text("\(item.id) dan \(item.sides.count) fotonya akan dihapus\(item.video == nil ? "" : " beserta videonya"). Tindakan ini tidak dapat dibatalkan.")
             }
         }
+        .modifier(ExportPresenter(job: job))
         .modifier(ErrorAlert(message: $error))
     }
 
@@ -374,19 +566,9 @@ struct RunDetail: View {
         do {
             documents = try await store.trees(runID: run.id)
             nextTreeName = try await store.run(id: run.id).nextTreeName
-            exportURL = nil
+            job.reset()
         } catch {
             self.error = error.localizedDescription
-        }
-    }
-
-    private func export() {
-        exporting = true
-        Task {
-            defer { exporting = false }
-            do {
-                exportURL = try await store.export(runID: run.id, to: FileManager.default.temporaryDirectory, appVersion: appVersion)
-            } catch { self.error = error.localizedDescription }
         }
     }
 }

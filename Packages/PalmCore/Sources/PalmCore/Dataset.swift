@@ -183,7 +183,8 @@ public struct CollectionRun: Codable, Hashable, Identifiable, Sendable {
     public var captureSet: CaptureSet
     /// `false` when the operator types each tree number at capture time (Kotlin `autoId`).
     public internal(set) var autoId = true
-    var nextNumber: Int
+    /// The number the next automatic capture will take.
+    public internal(set) var nextNumber: Int
 
     public func treeName(number: Int) -> String {
         [variety, block, type.marker, captureSet.nameToken, String(format: "%04d", number)]
