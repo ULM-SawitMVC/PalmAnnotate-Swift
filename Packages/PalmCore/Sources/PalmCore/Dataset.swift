@@ -72,10 +72,12 @@ public struct Measurements: Codable, Equatable, Sendable {
         Self(weightKg: weightKg, heightCm: heightCm, circumferenceCm: circumferenceCm, notes: notes)
     }
 
+    /// Kotlin `BunchMeasurements.validationError`: weight is required, and every given value must be above zero.
     public var validationError: String? {
-        guard let weightKg, weightKg.isFinite, weightKg > 0 else { return "Berat harus lebih dari nol." }
-        guard heightCm.map({ $0.isFinite && $0 > 0 }) ?? true else { return "Tinggi harus lebih dari nol." }
-        guard circumferenceCm.map({ $0.isFinite && $0 > 0 }) ?? true else { return "Lingkar harus lebih dari nol." }
+        guard let weightKg else { return "Berat wajib diisi." }
+        guard weightKg.isFinite, weightKg > 0 else { return "Berat harus lebih dari nol." }
+        guard heightCm.map({ $0.isFinite && $0 > 0 }) ?? true else { return "Tinggi harus lebih dari nol bila diisi." }
+        guard circumferenceCm.map({ $0.isFinite && $0 > 0 }) ?? true else { return "Lingkar harus lebih dari nol bila diisi." }
         return nil
     }
 }
