@@ -6,7 +6,7 @@ version=1.20.1
 runtime_sha=9c32108e9a1c78b090a95c2a219f244dd5f067d4caf68fb0f967103f3f20839c
 model_sha=6025944212389fc4f9d0fa7659a7655592ea9d6654a2c881c0d10898154ce61c
 config_sha=068338db0fe63c40be0ce7837a67f28d5889afe194e67822d9cbb1edb13c46a9
-reference=a52a5cb8e0ab5d228a01a624099f1cd2182f4221
+reference=5d671c30c1c17f3c7b1a40db367b74a295c82cf5
 model_base="https://raw.githubusercontent.com/ULM-SawitMVC/PalmAnnotate-Kotlin/$reference/app/src/main/assets/models"
 
 if [ -f Vendor/onnxruntime.xcframework/Info.plist ] &&

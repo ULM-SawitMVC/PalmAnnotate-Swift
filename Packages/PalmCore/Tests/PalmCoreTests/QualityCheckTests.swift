@@ -2,7 +2,7 @@ import Foundation
 import PalmCore
 import Testing
 
-/// Ports `QualityCheckTest` from Kotlin `DomainTests.kt` at a52a5cb, plus the iOS call sites.
+/// Ports `QualityCheckTest` from Kotlin `DomainTests.kt` at 5d671c3, plus the iOS call sites.
 @Suite struct QualityCheckTests {
     private let photo = CapturedPhoto(jpeg: Data([0xff, 0xd8, 0xff, 0xd9]), width: 1000, height: 1000)
     private let box = PixelBox(x1: 0, y1: 0, x2: 100, y2: 100)

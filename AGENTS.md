@@ -4,7 +4,7 @@ This repository ports the RGB field workflows from PalmAnnotate Kotlin to native
 
 ## Sources of truth
 
-- Start from the [pinned Kotlin source](https://github.com/ULM-SawitMVC/PalmAnnotate-Kotlin/tree/a52a5cb8e0ab5d228a01a624099f1cd2182f4221). Read its `PRODUCT.md`, `docs/TECHNICAL-CONTRACTS.md`, `docs/BUNCH-WEIGHT-MODULE.md`, and the relevant Kotlin tests and callers. Record the Android revision used for parity checks.
+- Start from the [pinned Kotlin source](https://github.com/ULM-SawitMVC/PalmAnnotate-Kotlin/tree/5d671c30c1c17f3c7b1a40db367b74a295c82cf5). Read its `PRODUCT.md`, `docs/TECHNICAL-CONTRACTS.md`, `docs/BUNCH-WEIGHT-MODULE.md`, and the relevant Kotlin tests and callers. Record the Android revision used for parity checks.
 - `Packages/PalmCore` owns domain rules, file revisions, counting, and export formats. `App` owns SwiftUI, AVFoundation, CoreLocation, and the ONNX bridge. Keep platform-independent fixtures and assertions in PalmCore.
 - The agreed v1 scope is Multisisi 4/8, Multisisi Video 4/8 with audio, Berat Tandan 1/2, and automatic ONNX detection for the annotated photo modules. Orbbec RGB-D, the depth viewer, the Android SAF mirror, and importing external Android packages are outside v1.
 

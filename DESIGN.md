@@ -3,7 +3,7 @@
 Native Swift + SwiftUI port of [PalmAnnotate-Kotlin](https://github.com/ULM-SawitMVC/PalmAnnotate-Kotlin).
 Compatibility targets the Android RGB export contracts and the Baseline-SawitMVC readers for
 the three v1 modules. The Android reference is commit
-[a52a5cb](https://github.com/ULM-SawitMVC/PalmAnnotate-Kotlin/tree/a52a5cb8e0ab5d228a01a624099f1cd2182f4221).
+[5d671c3](https://github.com/ULM-SawitMVC/PalmAnnotate-Kotlin/tree/5d671c30c1c17f3c7b1a40db367b74a295c82cf5).
 
 ## Implementation
 

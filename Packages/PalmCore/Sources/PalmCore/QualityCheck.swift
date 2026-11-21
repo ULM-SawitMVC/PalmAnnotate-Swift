@@ -1,6 +1,6 @@
 import Foundation
 
-/// Port of Kotlin `domain/quality/QualityCheck.kt` at a52a5cb.
+/// Port of Kotlin `domain/quality/QualityCheck.kt` at 5d671c3 (unchanged since a52a5cb).
 ///
 /// `analyzeCaptureShots` runs before a capture is committed and `analyzeTree` runs before a sample's
 /// files are exported. Neither report is persisted or exported. The operator may continue past any
