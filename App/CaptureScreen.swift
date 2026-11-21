@@ -434,7 +434,7 @@ struct CaptureScreen: View {
             }
             draft = try await store.draftPhotos(runID: run.id)
             savedVideo = await store.draftVideo(runID: run.id) != nil
-            reviewedSide = draft.indices.last
+            reviewedSide = draft.count < run.sideCount ? nil : draft.indices.last
             for index in draft.indices { render(index) }
         } catch {
             draftInvalid = true

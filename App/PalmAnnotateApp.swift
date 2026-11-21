@@ -58,6 +58,7 @@ private struct PalmAnnotateRoot: View {
                 if arguments.contains("--ui-test-collections") { try await seedCollectionsFixture(opened) }
                 if arguments.contains("--ui-test-quality") { try await seedQualityReviewFixture(opened) }
                 if arguments.contains("--ui-test-manual-id") { try await seedManualIDFixture(opened) }
+                if arguments.contains("--ui-test-partial-draft") { try await seedPartialDraftFixture(opened) }
                 #endif
                 store = opened
             } catch {

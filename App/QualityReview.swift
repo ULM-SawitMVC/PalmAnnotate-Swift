@@ -97,6 +97,18 @@ func seedQualityReviewFixture(_ store: PackageStore) async throws {
     }
 }
 
+func seedPartialDraftFixture(_ store: PackageStore) async throws {
+    let run = try await store.createRun(type: .multiside, variety: "DAMIMAS", block: "PD", operatorName: "",
+                                        sideCount: 4, split: "field", tokenized: false)
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 480, height: 360)).jpegData(withCompressionQuality: 0.9) { context in
+        UIColor.systemGreen.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 480, height: 360))
+    }
+    for side in 0..<2 {
+        try await store.saveDraftPhoto(normalizedPhoto(image), runID: run.id, side: side)
+    }
+}
+
 func seedManualIDFixture(_ store: PackageStore) async throws {
     let run = try await store.createRun(type: .multiside, variety: "DAMIMAS", block: "QM", operatorName: "",
                                         sideCount: 4, split: "field", tokenized: false, autoId: false)
