@@ -23,6 +23,7 @@ struct CaptureScreen: View {
     @State private var error: String?
     @State private var captureError: String?
     @State private var showDiscard = false
+    @State private var qualityReport: QualityCheck.Report?
     #if targetEnvironment(simulator)
     @State private var fixture: PhotosPickerItem?
     @State private var showMovieImporter = false
@@ -74,6 +75,7 @@ struct CaptureScreen: View {
                 Button("Hapus", role: .destructive) { work("Menghapus draf…") { try await clearDraft() } }
             }
             .modifier(ErrorAlert(message: $error))
+            .qualityReview($qualityReport, question: "Simpan tetap?", continueTitle: "Simpan tetap", onContinue: commit)
             .interactiveDismissDisabled(recording || busy)
             .task { await open() }
             .onDisappear { camera.stop() }
@@ -183,13 +185,7 @@ struct CaptureScreen: View {
             #endif
             if canSave {
                 Button(run.type == .bunchWeight && draft.count == 1 ? "Simpan dengan 1 foto" : "Simpan sampel",
-                       systemImage: "checkmark") {
-                    work("Menyimpan sampel…") {
-                        let document = try await store.commitCapture(runID: run.id, gps: gps.provenance)
-                        completed(document)
-                        dismiss()
-                    }
-                }
+                       systemImage: "checkmark", action: requestSave)
                 .buttonStyle(.borderedProminent)
             }
         }
@@ -249,6 +245,20 @@ struct CaptureScreen: View {
         else { draft[index] = photo }
         replacement = nil
         if !recording { reviewedSide = index }
+    }
+
+    /// Kotlin `CaptureFlowViewModel.requestSave`: review WARN and ERROR reports before committing.
+    private func requestSave() {
+        let report = QualityCheck.analyzeCapture(run: run, capturedSides: draft.count, gps: gps.provenance.atCommit(.now))
+        if report.needsReview { qualityReport = report } else { commit() }
+    }
+
+    private func commit() {
+        work("Menyimpan sampel…") {
+            let document = try await store.commitCapture(runID: run.id, gps: gps.provenance)
+            completed(document)
+            dismiss()
+        }
     }
 
     private func clearDraft() async throws {

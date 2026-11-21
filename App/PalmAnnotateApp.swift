@@ -50,6 +50,7 @@ private struct PalmAnnotateRoot: View {
                 let opened = try PackageStore(root: base)
                 #if DEBUG
                 if arguments.contains("--ui-test-capture") { try await seedCaptureFixture(opened) }
+                if arguments.contains("--ui-test-quality") { try await seedQualityReviewFixture(opened) }
                 #endif
                 store = opened
             } catch {
