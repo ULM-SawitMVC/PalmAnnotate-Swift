@@ -8,7 +8,8 @@ public enum DatasetType: String, Codable, CaseIterable, Identifiable, Sendable {
 
     public var id: String { rawValue }
     public var requiresVideo: Bool { self == .multisideVideo }
-    public var sideOptions: [Int] { self == .bunchWeight ? [1, 2] : [4, 8] }
+    /// Kotlin offers weight runs two photo slots only; the second may be skipped at capture time.
+    public var sideOptions: [Int] { self == .bunchWeight ? [2] : [4, 8] }
     var marker: String? {
         switch self {
         case .multiside: nil
@@ -180,7 +181,10 @@ public struct CollectionRun: Codable, Hashable, Identifiable, Sendable {
     public let sideCount: Int
     public let split: String
     public var captureSet: CaptureSet
-    var nextNumber: Int
+    /// `false` when the operator types each tree number at capture time (Kotlin `autoId`).
+    public internal(set) var autoId = true
+    /// The number the next automatic capture will take.
+    public internal(set) var nextNumber: Int
 
     public func treeName(number: Int) -> String {
         [variety, block, type.marker, captureSet.nameToken, String(format: "%04d", number)]
@@ -196,6 +200,23 @@ public struct CollectionRun: Codable, Hashable, Identifiable, Sendable {
 
     public static func sanitizedBlock(_ value: String) -> String {
         value.uppercased().replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
+    }
+}
+
+extension CollectionRun {
+    /// Runs written before manual tree IDs existed carry no `autoId` and keep automatic numbering.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(DatasetType.self, forKey: .type)
+        variety = try container.decode(String.self, forKey: .variety)
+        block = try container.decode(String.self, forKey: .block)
+        operatorName = try container.decode(String.self, forKey: .operatorName)
+        sideCount = try container.decode(Int.self, forKey: .sideCount)
+        split = try container.decode(String.self, forKey: .split)
+        captureSet = try container.decode(CaptureSet.self, forKey: .captureSet)
+        autoId = try container.decodeIfPresent(Bool.self, forKey: .autoId) ?? true
+        nextNumber = try container.decode(Int.self, forKey: .nextNumber)
     }
 }
 

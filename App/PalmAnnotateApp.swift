@@ -29,6 +29,7 @@ private struct PalmAnnotateRoot: View {
                     }
                 }
                 .navigationTitle("PalmAnnotate")
+                .safeAreaInset(edge: .bottom) { hubFooter }
             } else if let error {
                 ContentUnavailableView("Penyimpanan tidak tersedia", systemImage: "externaldrive.badge.exclamationmark", description: Text(error))
             } else {
@@ -50,6 +51,7 @@ private struct PalmAnnotateRoot: View {
                 let opened = try PackageStore(root: base)
                 #if DEBUG
                 if arguments.contains("--ui-test-capture") { try await seedCaptureFixture(opened) }
+                if arguments.contains("--ui-test-collections") { try await seedCollectionsFixture(opened) }
                 if arguments.contains("--ui-test-quality") { try await seedQualityReviewFixture(opened) }
                 #endif
                 store = opened
@@ -59,7 +61,45 @@ private struct PalmAnnotateRoot: View {
         }
     }
 
+    private var hubFooter: some View {
+        VStack(spacing: 4) {
+            Text("Data hanya tersimpan di aplikasi ini. Ekspor ZIP untuk memindahkan data.")
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("hub-data-hint")
+            Text(versionLabel).monospacedDigit().accessibilityIdentifier("hub-version")
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(.bar)
+    }
+
+    private var versionLabel: String {
+        let info = Bundle.main.infoDictionary
+        return "v\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
+    }
+
     #if DEBUG
+    /// Two multiside runs: A1 holds two unfinished samples, B2 is empty.
+    private func seedCollectionsFixture(_ store: PackageStore) async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 90)).jpegData(withCompressionQuality: 0.8) { context in
+            UIColor.systemGreen.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 120, height: 90))
+        }
+        let run = try await store.createRun(type: .multiside, variety: "DAMIMAS", block: "A1", operatorName: "",
+                                            sideCount: 4, split: "field", tokenized: false)
+        _ = try await store.createRun(type: .multiside, variety: "DAMIMAS", block: "B2", operatorName: "",
+                                      sideCount: 4, split: "field", tokenized: false)
+        for _ in 0..<2 {
+            for side in 0..<4 {
+                try await store.saveDraftPhoto(CapturedPhoto(jpeg: image, width: 120, height: 90), runID: run.id, side: side)
+            }
+            _ = try await store.commitCapture(runID: run.id, gps: Provenance(status: .unavailable))
+        }
+    }
+
     private func seedCaptureFixture(_ store: PackageStore) async throws {
         let run = try await store.createRun(type: .bunchWeight, variety: "DAMIMAS", block: "QA", operatorName: "",
                                             sideCount: 2, split: "field", tokenized: false)
