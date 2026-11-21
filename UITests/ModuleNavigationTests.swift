@@ -39,14 +39,12 @@ final class ModuleNavigationTests: XCTestCase {
         app.buttons["Tutup"].tap()
         XCTAssertTrue(app.buttons["Pilih foto simulator"].waitForNonExistence(timeout: 10))
 
-        // A List creates rows only once they scroll into view; landscape starts with the session header.
         let sample = app.staticTexts["DAMIMAS_QA_BW_0001"]
         for _ in 0..<5 where !sample.exists || !sample.isHittable { app.collectionViews.firstMatch.swipeUp() }
         sample.tap()
         let photo = app.descendants(matching: .any)["annotation-photo"].firstMatch
         XCTAssertTrue(photo.waitForExistence(timeout: 10))
         attachScreenshot(named: "Editor anotasi")
-        // Selecting the bunch opens Kotlin's inline weight panel; EditorParityTests covers its validation.
         photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let weight = app.textFields["measurement-weight"]
         XCTAssertTrue(weight.waitForExistence(timeout: 5))
@@ -71,7 +69,6 @@ final class ModuleNavigationTests: XCTestCase {
         }
     }
 
-    /// A List creates rows only once they are on screen; landscape shows few of the share rows at a time.
     @MainActor
     private func scrollResults(to element: XCUIElement, in app: XCUIApplication) -> Bool {
         let list = app.collectionViews["results-list"]
@@ -104,7 +101,6 @@ final class ModuleNavigationTests: XCTestCase {
 
             let navigation = app.navigationBars[module]
             XCTAssertTrue(navigation.waitForExistence(timeout: 5))
-            // Berat Tandan names its sessions "sesi berat", as Kotlin's weight list does.
             let empty = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Belum ada sesi")).firstMatch
             XCTAssertTrue(empty.isHittable)
             attachScreenshot(named: module)

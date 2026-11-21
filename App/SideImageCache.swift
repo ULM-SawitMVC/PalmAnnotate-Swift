@@ -1,8 +1,6 @@
 import ImageIO
 import SwiftUI
 
-/// Decodes each side's photo on demand at no more than `maxPixel` on the long edge and keeps the most
-/// recently used few. Boxes are never mapped through these images: all box math uses `CaptureSide.width/height`.
 @MainActor @Observable
 final class SideImageCache {
     nonisolated static let maxPixel = 2048
@@ -14,7 +12,6 @@ final class SideImageCache {
 
     func image(_ side: Int) -> UIImage? { images[side] }
 
-    /// Returns false when the photo cannot be decoded.
     @discardableResult
     func load(side: Int, url: URL) async -> Bool {
         if images[side] != nil { return true }
@@ -31,7 +28,6 @@ final class SideImageCache {
         return true
     }
 
-    /// Marks a side as in use so it is the last one evicted.
     func touch(_ side: Int) {
         guard images[side] != nil else { return }
         recency.removeAll { $0 == side }

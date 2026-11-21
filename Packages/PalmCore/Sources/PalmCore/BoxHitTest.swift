@@ -1,7 +1,6 @@
-/// Kotlin `BboxHitTest.pick`.
 public enum BoxHitTest {
     /// The smallest box that contains the point, else the nearest box whose edge is within `tolerance`
-    /// (in the same units as the point). On equal distances the later box wins, as in Kotlin.
+    /// (in the same units as the point). On equal distances the later box wins.
     public static func pick(_ boxes: [Annotation], x: Float, y: Float, tolerance: Float) -> String? {
         var best: Annotation?
         var bestArea = Float.greatestFiniteMagnitude

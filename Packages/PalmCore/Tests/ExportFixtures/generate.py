@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Build Kotlin export goldens from the exact Android revision using kotlinc and JDK 17."""
 
 import os
 from pathlib import Path
@@ -50,8 +49,6 @@ with tempfile.TemporaryDirectory(prefix="palm-kotlin-goldens-") as temp:
     repo = read_source("data/storage/SessionRepository.kt")
     metadata = repo[repo.index("    private fun buildMetadataJson("):repo.index("    // ─── Load / save one tree")]
     logs = repo[repo.index("    private fun buildAnnotLog("):repo.index("// ─── Mappers + summary types")]
-    # Compile the actual private producer bodies with the dependencies they use.
-    # Freeze the independent wall clock after running the annotation-log producer.
     (build / "RepositoryProjections.kt").write_text("""
 package dev.sawitulm.palmannotate.data.storage
 

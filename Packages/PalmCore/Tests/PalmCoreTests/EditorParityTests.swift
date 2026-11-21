@@ -2,8 +2,6 @@ import Foundation
 import PalmCore
 import Testing
 
-/// Kotlin editor behaviours: suggestion categories, link groups, detection merge, class mismatches,
-/// hit testing, and measurement input.
 @Suite struct EditorParityTests {
     private let photo = CapturedPhoto(jpeg: Data([0xff, 0xd8, 0xff, 0xd9]), width: 1000, height: 1000)
 
@@ -20,7 +18,6 @@ import Testing
 
     @Test func seamMatchIsAutoWithPercent() async throws {
         try await withTree { tree in
-            // Left edge of side 0 meets right edge of side 1: seam 0.9 each, same height and size.
             tree.addBox(side: 0, rect: PixelBox(x1: 0, y1: 400, x2: 100, y2: 600))
             tree.addBox(side: 1, rect: PixelBox(x1: 900, y1: 400, x2: 1000, y2: 600))
             let suggestions = tree.linkSuggestions()
@@ -34,7 +31,6 @@ import Testing
 
     @Test func weakerSeamMatchIsCandidate() async throws {
         try await withTree { tree in
-            // Seam 0.3 on both sides: 0.45 * 0.3 + 0.35 + 0.20 = 0.685.
             tree.addBox(side: 0, rect: PixelBox(x1: 300, y1: 400, x2: 400, y2: 600))
             tree.addBox(side: 1, rect: PixelBox(x1: 600, y1: 400, x2: 700, y2: 600))
             let found = try #require(tree.linkSuggestions().first)
@@ -50,10 +46,8 @@ import Testing
             let b = try add(&tree, 1, PixelBox(x1: 900, y1: 400, x2: 1000, y2: 600))
             tree.setRipeness(a, ripeness: .b1)
             tree.setRipeness(b, ripeness: .b2)
-            // One grade apart keeps 0.85 of 0.955, still above the auto threshold.
             #expect(tree.linkSuggestions().first?.category == .auto)
             tree.setRipeness(b, ripeness: .b4)
-            // Three grades apart halves it to 0.4775, below the candidate floor.
             #expect(tree.linkSuggestions().isEmpty)
         }
     }
@@ -105,7 +99,6 @@ import Testing
             #expect(tree.sides[0].annotations.map(\.id) == ["b0", "det1", "det2"])
             #expect(tree.sides[0].suggestions.map(\.id) == ["det1", "det2"])
 
-            // A second pass keeps the baseline and continues the numbering.
             let again = tree.mergeDetections(side: 0, [Annotation(id: "det0", rect: PixelBox(x1: 10, y1: 800, x2: 90, y2: 900))])
             #expect(again.map(\.box) == ["det3"])
             #expect(tree.sides[0].suggestions.map(\.id) == ["det1", "det2"])

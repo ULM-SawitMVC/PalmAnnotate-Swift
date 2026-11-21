@@ -1,18 +1,14 @@
 import PalmCore
 import SwiftUI
 
-/// Kotlin `DeduplicationScreen`: seam suggestions scored and categorised, confirmed links removable,
-/// and a compute step that resolves class mismatches before the results.
 struct DedupSheet: View {
     let document: TreeDocument
     @Binding var clockwise: Bool
     let busy: Bool
-    /// The editor's photos, so each suggestion can show both bunches like Kotlin's pair review.
     let images: SideImageCache
     let loadImage: (Int) async -> Void
     let onAccept: ([LinkSuggestion]) -> Void
     let onRemove: (String) -> Void
-    /// Resolves class mismatches with the given choices (empty when there are none), saves, then shows results.
     let onCompute: ([String: Ripeness]) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var rejected: Set<String> = []
@@ -127,7 +123,6 @@ struct DedupSheet: View {
         .padding(.vertical, 2)
     }
 
-    /// The bunch with a margin of context, cut from the downsampled photo. Box math stays in original pixels.
     private func crop(_ ref: BoxRef) -> some View {
         let cropped: UIImage? = {
             guard let image = images.image(ref.side)?.cgImage,

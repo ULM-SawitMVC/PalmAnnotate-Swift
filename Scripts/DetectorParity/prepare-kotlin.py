@@ -1,5 +1,3 @@
-"""Extract and instrument the pinned detector in a scratch test project."""
-
 import shutil
 import subprocess
 import sys
@@ -23,9 +21,7 @@ def write(directory, name, data):
 detector = read(f"{source}/data/detection/OnnxDetector.kt")
 return_box = b"Bbox.unassigned(\"det$i\", d.x1, d.y1, d.x2, d.y2)"
 assert detector.count(return_box) == 1
-# Report the score at the point where the real detector returns each box.
 detector = detector.replace(return_box, return_box + b".also { DetectorProbe.confidences.add(d.score) }")
-# The app degrades to manual annotation on errors. A parity run must fail on those errors.
 for message in (
     "Failed to initialize ONNX detector",
     "Failed to load detector config, using defaults",
@@ -37,7 +33,6 @@ for message in (
 write("src/test/kotlin", "OnnxDetector.kt", detector)
 for name in ["Bbox.kt", "BunchMeasurements.kt", "AnnotationClass.kt"]:
     write("src/test/kotlin", name, read(f"{source}/domain/model/{name}"))
-# AnnotationClass also exposes Compose swatches. Preserve its enum and IDs without a UI dependency.
 write(
     "src/test/kotlin", "ComposeColor.kt",
     b"package androidx.compose.ui.graphics\n\ndata class Color(val argb: Long)\n",

@@ -1,8 +1,6 @@
 import PalmCore
 import SwiftUI
 
-/// Port of Kotlin `QualityGateModal`. The operator reads every issue, then either returns to fix the
-/// sample or continues. No level blocks the action, matching Kotlin.
 struct QualityReview: ViewModifier {
     @Binding var report: QualityCheck.Report?
     let question: String
@@ -11,7 +9,6 @@ struct QualityReview: ViewModifier {
     @State private var continuing = false
 
     func body(content: Content) -> some View {
-        // Continue after the sheet is gone so the action may dismiss the presenting screen.
         content.sheet(isPresented: Binding(get: { report != nil }, set: { if !$0 { report = nil } }), onDismiss: {
             guard continuing else { return }
             continuing = false
@@ -85,8 +82,6 @@ private extension QualityCheck.Level {
 }
 
 #if DEBUG
-/// A complete multiside draft for the quality review UI test. UI tests skip GPS, so saving it raises
-/// the missing-GPS warning, and the committed sample has no boxes.
 @MainActor
 func seedQualityReviewFixture(_ store: PackageStore) async throws {
     let run = try await store.createRun(type: .multiside, variety: "DAMIMAS", block: "QC", operatorName: "",
@@ -102,7 +97,6 @@ func seedQualityReviewFixture(_ store: PackageStore) async throws {
     }
 }
 
-/// A run without automatic numbering. Sample 3 is committed, and a complete draft waits for its ID.
 func seedManualIDFixture(_ store: PackageStore) async throws {
     let run = try await store.createRun(type: .multiside, variety: "DAMIMAS", block: "QM", operatorName: "",
                                         sideCount: 4, split: "field", tokenized: false, autoId: false)

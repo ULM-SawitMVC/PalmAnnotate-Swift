@@ -107,7 +107,6 @@ import ZIPFoundation
         var expectedOutput = try #require(golden["output"] as? [String: Any])
         var expectedOutputMetadata = try #require(expectedOutput["metadata"] as? [String: Any])
         expectedOutputMetadata["capture_set_id"] = identity
-        // Kotlin goldens use a fixed local day. PackageStore derives the day in the host time zone.
         let localDay = ExportCodec.captureDate(captureDate)
         let sessionID = try #require(expectedOutputMetadata["session_id"] as? String)
         expectedOutputMetadata["session_id"] = localDay.replacingOccurrences(of: "-", with: "") + sessionID.dropFirst(8)

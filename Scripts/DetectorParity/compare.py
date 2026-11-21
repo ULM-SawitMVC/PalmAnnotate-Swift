@@ -1,11 +1,3 @@
-"""Require a one-to-one match within one original-image pixel on every edge.
-
-Usage: compare.py [--tolerance PIXELS] ANDROID_REPORT IOS_REPORT
-
-A larger tolerance (for example 5) keeps the exit status strict about the count and class but lets
-the report measure how far apart boxes are that miss the 1 px target.
-"""
-
 import math
 import sys
 from pathlib import Path
@@ -41,7 +33,6 @@ def edge_delta(a, b):
 
 
 def match(reference, swift, tolerance=1):
-    # Match by coordinates and class. Confidence can shift rank between platforms.
     choices = [
         sorted((j for j, b in enumerate(swift) if a[0] == b[0] and edge_delta(a, b) <= tolerance),
                key=lambda j: edge_delta(a, swift[j]))

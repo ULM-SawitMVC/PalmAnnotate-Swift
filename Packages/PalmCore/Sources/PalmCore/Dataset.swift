@@ -8,7 +8,6 @@ public enum DatasetType: String, Codable, CaseIterable, Identifiable, Sendable {
 
     public var id: String { rawValue }
     public var requiresVideo: Bool { self == .multisideVideo }
-    /// Kotlin offers weight runs two photo slots only; the second may be skipped at capture time.
     public var sideOptions: [Int] { self == .bunchWeight ? [2] : [4, 8] }
     var marker: String? {
         switch self {
@@ -73,7 +72,7 @@ public struct Measurements: Codable, Equatable, Sendable {
         Self(weightKg: weightKg, heightCm: heightCm, circumferenceCm: circumferenceCm, notes: notes)
     }
 
-    /// Kotlin `BunchMeasurements.validationError`: weight is required, and every given value must be above zero.
+    /// Weight is required, and every given value must be above zero.
     public var validationError: String? {
         guard let weightKg else { return "Berat wajib diisi." }
         guard weightKg.isFinite, weightKg > 0 else { return "Berat harus lebih dari nol." }
@@ -183,7 +182,7 @@ public struct CollectionRun: Codable, Hashable, Identifiable, Sendable {
     public let sideCount: Int
     public let split: String
     public var captureSet: CaptureSet
-    /// `false` when the operator types each tree number at capture time (Kotlin `autoId`).
+    /// `false` when the operator types each tree number at capture time.
     public internal(set) var autoId = true
     /// The number the next automatic capture will take.
     public internal(set) var nextNumber: Int
@@ -195,7 +194,7 @@ public struct CollectionRun: Codable, Hashable, Identifiable, Sendable {
 
     public var nextTreeName: String { treeName(number: nextNumber) }
 
-    /// Kotlin `CaptureSetIdentity.sanitizeVariety`: a variety with no usable characters becomes `TREE`.
+    /// A variety with no usable characters becomes `TREE`.
     public static func sanitizedVariety(_ value: String) -> String {
         let clean = value.uppercased().replacingOccurrences(of: "[^A-Z0-9_]+", with: "_", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
@@ -208,7 +207,6 @@ public struct CollectionRun: Codable, Hashable, Identifiable, Sendable {
 }
 
 extension CollectionRun {
-    /// Runs written before manual tree IDs existed carry no `autoId` and keep automatic numbering.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)

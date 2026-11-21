@@ -1,11 +1,9 @@
 import PalmCore
 import SwiftUI
 
-/// Kotlin `CarouselScreen`: one page per photo, swipe between sides in Review, edit geometry in Edit.
 struct AnnotationEditor: View {
     let id: String
     let store: PackageStore
-    /// Completes the sample and asks the session screen to open the next capture.
     var onNext: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var document: TreeDocument?
@@ -26,8 +24,6 @@ struct AnnotationEditor: View {
     @State private var showMismatch = false
     @State private var draft = MeasurementDraft()
     @FocusState private var field: MeasurementField?
-    /// Whether the editor is wider than tall, measured with the keyboard ignored: the keyboard can shrink the
-    /// content below its width, and switching layouts then would rebuild the focused field.
     @State private var wide = UIScreen.main.bounds.width > UIScreen.main.bounds.height
     @State private var toast: String?
     @State private var toastToken = UUID()
@@ -170,7 +166,6 @@ struct AnnotationEditor: View {
         }
     }
 
-    /// The selected box of a bunch weight sample. Like Kotlin, selecting one opens the measurement panel.
     private func measurementTarget(_ tree: TreeDocument) -> BoxRef? {
         guard tree.run.type == .bunchWeight, let selected, pendingLink == nil, tree.annotation(selected) != nil else { return nil }
         return selected
@@ -569,8 +564,6 @@ struct AnnotationEditor: View {
         if replaced { showToast("Tertaut. Ukuran dari foto lain menggantikan nilai pada tandan ini.") }
     }
 
-    /// Kotlin `exitTree`: Back on a Multisisi sample saves and completes it; on a Berat Tandan sample it
-    /// saves a draft, because completion there follows from the weights.
     private func exit() {
         guard !saving, !detecting else { return }
         guard let document else {
@@ -636,8 +629,6 @@ struct AnnotationEditor: View {
                 let url = await store.photoURL(treeID: id, side: target)
                 let jpeg = try Data(contentsOf: url)
                 let found = try await Detector.shared.detect(CapturedPhoto(jpeg: jpeg, width: info.width, height: info.height))
-                // The operator may have swiped away while the model ran: merge into the side it ran on, using its
-                // latest boxes, and drop the result if that side's photo is no longer the one that was analysed.
                 guard let latest = document, latest.sides.indices.contains(target),
                       latest.sides[target].sha256 == info.sha256 else { return }
                 var probe = latest
@@ -666,7 +657,6 @@ struct AnnotationEditor: View {
                                    _ edit: (inout TreeDocument) -> String?) {
         guard !saving, var updated = document else { return }
         let message = edit(&updated)
-        // Show the edit at once; the saved revision replaces it, and a failed save reloads the stored one.
         document = updated
         saving = true
         Task {
@@ -702,7 +692,6 @@ struct AnnotationEditor: View {
         }
     }
 
-    /// Decodes one side's photo on first use. Neighbours load as the pager reaches them.
     private func loadImage(_ index: Int) async {
         guard document?.sides.indices.contains(index) ?? true, index >= 0 else { return }
         if cache.image(index) != nil {
@@ -721,7 +710,6 @@ struct AnnotationEditor: View {
         })
     }
 
-    /// Box id to link-group number for one side, so a linked bunch keeps one colour on every photo.
     private func linkGroups(_ tree: TreeDocument, side: Int) -> [String: Int] {
         Dictionary(uniqueKeysWithValues: tree.linkGroups().filter { $0.key.side == side }.map { ($0.key.box, $0.value) })
     }
@@ -751,7 +739,6 @@ struct Viewport: Equatable {
     var offset: CGSize = .zero
 }
 
-/// Maps between view points and image pixels for one viewport.
 private struct ViewTransform {
     let size: CGSize
     let scale: CGFloat
@@ -771,7 +758,6 @@ private struct ViewTransform {
                          y: axis(size.height, displayed.height, viewport.offset.height))
     }
 
-    /// The offset this transform actually shows, after clamping.
     var offset: CGSize {
         CGSize(width: origin.x - (size.width - displayed.width) / 2, height: origin.y - (size.height - displayed.height) / 2)
     }
@@ -786,9 +772,6 @@ private struct ViewTransform {
     }
 }
 
-/// Kotlin `AnnotationCanvas`. Pinch zooms around the fingers. In Edit, a drag on a handle of the selected box
-/// resizes it, a drag on a box moves it, and a drag on the photo pans. Review installs only a pan, and only
-/// while zoomed, so a swipe at fit scale reaches the pager.
 private struct AnnotationCanvas: View {
     let image: UIImage
     let side: CaptureSide
@@ -809,7 +792,6 @@ private struct AnnotationCanvas: View {
     @State private var preview: PixelBox?
     @State private var pinchBase: Viewport?
 
-    /// Kotlin `TOUCH_TOL_DP`: how far outside a box (in view points) a tap still selects it.
     private static let touchTolerance: CGFloat = 24
     private static let handleRadius: CGFloat = 22
     private static let minimumDraw: CGFloat = 24
@@ -931,7 +913,6 @@ private struct AnnotationCanvas: View {
         return .pan(start: viewport.offset)
     }
 
-    /// Handle hit areas are measured in view points, so they stay finger-sized at every zoom.
     private func handle(of box: PixelBox, at point: CGPoint, _ transform: ViewTransform) -> Handle? {
         let rect = transform.screen(box)
         let radius = min(Self.handleRadius, max(8, min(rect.width, rect.height) / 4))
@@ -996,7 +977,6 @@ private struct AnnotationCanvas: View {
         viewport = viewport.zoom <= 1.001 ? Viewport() : Viewport(zoom: viewport.zoom, offset: shown.offset)
     }
 
-    /// Image-pixel hit test: the smallest box under the point, else the nearest within the finger tolerance.
     private func pick(at location: CGPoint, _ transform: ViewTransform) -> String? {
         BoxHitTest.pick(side.annotations, x: Float(location.x), y: Float(location.y),
                         tolerance: Float(Self.touchTolerance / transform.scale))

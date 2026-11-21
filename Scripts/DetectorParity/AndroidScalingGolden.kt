@@ -5,10 +5,6 @@ import android.app.Instrumentation
 import android.graphics.Bitmap
 import android.os.Bundle
 
-/**
- * Scales synthetic images with the same call the detector uses and prints an FNV-1a 64 hash of the
- * scaled RGB bytes. The images come from a 32-bit LCG, so no field data is involved.
- */
 class AndroidScalingGolden : Instrumentation() {
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
@@ -31,7 +27,7 @@ class AndroidScalingGolden : Instrumentation() {
                 val scaled = Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
                 val out = IntArray(newWidth * newHeight)
                 scaled.getPixels(out, 0, newWidth, 0, 0, newWidth, newHeight)
-                var hash = -0x340d631b7bdddcdbL // FNV offset basis 0xcbf29ce484222325
+                var hash = -0x340d631b7bdddcdbL
                 for (p in out) for (shift in intArrayOf(16, 8, 0)) {
                     hash = (hash xor ((p shr shift) and 0xFF).toLong()) * 0x100000001b3L
                 }

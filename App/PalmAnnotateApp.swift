@@ -89,7 +89,6 @@ private struct PalmAnnotateRoot: View {
     }
 
     #if DEBUG
-    /// Two multiside runs: A1 holds two unfinished samples, B2 is empty.
     private func seedCollectionsFixture(_ store: PackageStore) async throws {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 90)).jpegData(withCompressionQuality: 0.8) { context in
             UIColor.systemGreen.setFill()

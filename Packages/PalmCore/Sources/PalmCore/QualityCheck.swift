@@ -1,10 +1,5 @@
 import Foundation
 
-/// Port of Kotlin `domain/quality/QualityCheck.kt` at 5d671c3 (unchanged since a52a5cb).
-///
-/// `analyzeCaptureShots` runs before a capture is committed and `analyzeTree` runs before a sample's
-/// files are exported. Neither report is persisted or exported. The operator may continue past any
-/// level, including `error`, because Kotlin never blocks capture or export on this check.
 public enum QualityCheck {
     public enum Level: String, Sendable {
         case ok = "OK", info = "INFO", warn = "WARN", error = "ERROR"
@@ -21,7 +16,6 @@ public enum QualityCheck {
         public let metrics: [String: Int]
         public let issues: [Issue]
 
-        /// Kotlin shows the operator review for `WARN` and `ERROR`. `status` is never `INFO`.
         public var needsReview: Bool { status != .ok }
     }
 
@@ -56,10 +50,9 @@ public enum QualityCheck {
         ], issues: issues)
     }
 
-    /// The capture gate as `CaptureFlowViewModel.requestSave` calls it. iOS has no Orbbec, so no side
-    /// requires depth. Bunch Weight compares against the photos taken, so finishing with one photo is
-    /// not a warning. `gps` must already be re-judged for the commit instant; any recorded
-    /// coordinate counts, whatever its freshness.
+    /// Bunch Weight compares against the photos taken, so finishing with one photo is not a warning.
+    /// `gps` must already be re-judged for the commit instant; any recorded coordinate counts,
+    /// whatever its freshness.
     public static func analyzeCapture(run: CollectionRun, capturedSides: Int, gps: Provenance) -> Report {
         analyzeCaptureShots(
             capturedSides: capturedSides,
@@ -70,9 +63,7 @@ public enum QualityCheck {
         )
     }
 
-    /// Kotlin keeps Bunch Weight boxes internally unassigned, so its `analyzeTree` warns about
-    /// unassigned boxes on every weight export even though ripeness does not apply to that module.
-    /// This port counts unassigned boxes only for modules that assign ripeness.
+    /// Counts unassigned boxes only for modules that assign ripeness.
     public static func analyzeTree(_ tree: TreeDocument) -> Report {
         var issues: [Issue] = []
         let sides = tree.sides
@@ -129,7 +120,6 @@ public enum QualityCheck {
         return .ok
     }
 
-    /// Kotlin `String.isBlank()`.
     private static func isBlank(_ value: String) -> Bool {
         value.allSatisfy(\.isWhitespace)
     }

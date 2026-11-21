@@ -20,7 +20,6 @@ private func bytes(_ tensor: [Float], _ letterbox: Letterbox, channel: Int, row:
 }
 
 @Test func tensorTruncatesBilinearBlendsAndKeepsPlanesSeparate() {
-    // Halving averages 2x2 blocks. The averages end in .5 and must truncate, not round.
     let letterbox = Letterbox(width: 4, height: 4, size: 2)
     let result = tensor(letterbox, width: 4, height: 4) { x, y, channel in UInt8(x + 2 * y + 10 * channel) }
     #expect(bytes(result, letterbox, channel: 0, row: 0) == [1, 3])
@@ -42,7 +41,6 @@ private func bytes(_ tensor: [Float], _ letterbox: Letterbox, channel: Int, row:
 @Test func tensorClampsTapsAtTheImageEdgeWhenEnlarging() {
     let letterbox = Letterbox(width: 2, height: 1, size: 4)
     let result = tensor(letterbox, width: 2, height: 1) { x, _, _ in x == 0 ? 100 : 200 }
-    // Source positions are -0.25, 0.25, 0.75 and 1.25 pixels, in 1/16 steps.
     #expect(bytes(result, letterbox, channel: 0, row: 1) == [100, 125, 175, 200])
     #expect(bytes(result, letterbox, channel: 0, row: 2) == [100, 125, 175, 200])
 }
@@ -63,10 +61,6 @@ private func bytes(_ tensor: [Float], _ letterbox: Letterbox, channel: Int, row:
     #expect(result == [Float](repeating: 114.0 / 255, count: 12))
 }
 
-/// Hashes recorded from `Bitmap.createScaledBitmap(..., filter = true)` on Android 14 (API 34, arm64)
-/// by `Scripts/DetectorParity/run-android-scaling-golden.sh`. The images are LCG noise, so every pixel
-/// is a distinct tap. The 640-column case is sensitive to the 127-pixel step restart, and non-dyadic
-/// scales exercise the 4-bit weights.
 @Test(arguments: [
     (37, 23, 16, UInt64(0xdadc2632ac0e986a)),
     (700, 500, 200, UInt64(0x86506e36a7cce61b)),
@@ -84,7 +78,7 @@ func tensorMatchesAndroidCreateScaledBitmap(width: Int, height: Int, size: Int, 
     let letterbox = Letterbox(width: width, height: height, size: size)
     let result = pixels.withUnsafeBytes { letterbox.tensor(pixels: $0, bytesPerRow: width * 3, bytesPerPixel: 3) }
 
-    var hash: UInt64 = 0xcbf29ce484222325 // FNV-1a over the scaled RGB bytes in raster order.
+    var hash: UInt64 = 0xcbf29ce484222325
     let area = size * size
     for row in 0..<letterbox.resizedHeight { for column in 0..<letterbox.resizedWidth { for channel in 0..<3 {
         let value = result[channel * area + (letterbox.padY + row) * size + letterbox.padX + column] * 255

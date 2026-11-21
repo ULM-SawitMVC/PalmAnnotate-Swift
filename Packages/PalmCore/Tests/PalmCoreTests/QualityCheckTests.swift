@@ -2,7 +2,6 @@ import Foundation
 import PalmCore
 import Testing
 
-/// Ports `QualityCheckTest` from Kotlin `DomainTests.kt` at 5d671c3, plus the iOS call sites.
 @Suite struct QualityCheckTests {
     private let photo = CapturedPhoto(jpeg: Data([0xff, 0xd8, 0xff, 0xd9]), width: 1000, height: 1000)
     private let box = PixelBox(x1: 0, y1: 0, x2: 100, y2: 100)
@@ -209,7 +208,6 @@ import Testing
                                             sideCount: 4, split: "field", tokenized: false)
         for side in 0..<4 { try await store.saveDraftPhoto(photo, runID: run.id, side: side) }
         let tree = try await store.commitCapture(runID: run.id, gps: Provenance(status: .unavailable))
-        // Kotlin's tests build one- and two-side sessions; the store only commits a full multiside capture.
         return try rewrite(tree) { json in json["sides"] = Array((json["sides"] as! [Any]).prefix(sides)) }
     }
 

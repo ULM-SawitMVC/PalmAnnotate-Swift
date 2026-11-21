@@ -3,7 +3,6 @@ import PalmCore
 import Testing
 import ZIPFoundation
 
-/// Run deletion, run-list summaries, export progress, manual tree IDs, and the draft photo layout.
 @Suite struct StoreParityTests {
     private let jpeg = Data([0xff, 0xd8, 0xff, 0xd9])
     private var photo: CapturedPhoto { CapturedPhoto(jpeg: jpeg, width: 100, height: 100) }
@@ -77,7 +76,6 @@ import ZIPFoundation
             let leftovers = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("staging").path)
             #expect(leftovers.isEmpty)
             await #expect(throws: StoreError.self) { try await store.deleteRun(id: doomed.id) }
-            // The same variety and block starts over with a new identity.
             let recreated = try await weightRun(store, block: "A1")
             #expect(recreated.nextTreeName == "DAMIMAS_A1_BW_0001")
             #expect(recreated.captureSet.captureSetId != doomed.captureSet.captureSetId)
@@ -100,7 +98,6 @@ import ZIPFoundation
             #expect(first.photoCount == 2)
             #expect(first.completeCount == 0)
             #expect(summaries.first { $0.run.id == empty.id }?.treeCount == 0)
-            // A draft or resumed run with nothing saved still has a creation-time update.
             #expect(summaries.allSatisfy { $0.updatedAt > .distantPast })
         }
     }
@@ -162,7 +159,6 @@ import ZIPFoundation
             box.task = task
             await #expect(throws: CancellationError.self) { try await task.value }
             #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
-            // The sample is untouched and a later export works.
             let zip = try await store.export(runID: run.id, to: folder, appVersion: "test")
             #expect(FileManager.default.fileExists(atPath: zip.path))
         }
@@ -173,7 +169,6 @@ import ZIPFoundation
             let run = try await weightRun(store, autoId: false)
             #expect(!run.autoId)
             #expect(try await store.run(id: run.id).autoId == false)
-            // Resuming keeps the setting.
             #expect(try await weightRun(store, autoId: true).autoId == false)
 
             let manual = try await commit(store, run, number: 7)
@@ -198,7 +193,6 @@ import ZIPFoundation
             #expect(try await store.draftPhotos(runID: run.id).count == 1)
             #expect(try await store.trees(runID: run.id).count == 2)
 
-            // Automatic numbering still skips taken numbers, and deleting recomputes the counter like Kotlin.
             let auto = try await store.commitCapture(runID: run.id, gps: Provenance(status: .unavailable))
             #expect(auto.number == 8)
             try await store.deleteTree(id: auto.id)
@@ -234,7 +228,6 @@ import ZIPFoundation
             let meta = try String(contentsOf: draft.appendingPathComponent("0.json"), encoding: .utf8)
             #expect(!meta.contains("jpeg"))
 
-            // Side 1 in the legacy layout: the JPEG is embedded in the JSON.
             let legacy = CapturedPhoto(jpeg: Data([0xff, 0xd8, 0x01, 0xff, 0xd9]), width: 64, height: 48)
             try JSONEncoder().encode(legacy).write(to: draft.appendingPathComponent("1.json"))
             let reopened = try PackageStore(root: root)
@@ -242,7 +235,6 @@ import ZIPFoundation
             #expect(photos.count == 2)
             #expect(photos[0].suggestions == [suggestion] && photos[0].jpeg == jpeg && photos[0].height == 80)
             #expect(photos[1].jpeg == legacy.jpeg && photos[1].width == 64)
-            // The next side continues after a legacy one, and a legacy side can be retaken.
             try await reopened.saveDraftPhoto(photo, runID: run.id, side: 2)
             let retake = CapturedPhoto(jpeg: Data([0xff, 0xd8, 0x02, 0xff, 0xd9]), width: 10, height: 10)
             try await reopened.saveDraftPhoto(retake, runID: run.id, side: 1)
@@ -267,7 +259,6 @@ import ZIPFoundation
             stored = try await store.draftPhotos(runID: run.id)
             #expect(stored[0].suggestions.isEmpty && stored[0].jpeg == retake.jpeg)
 
-            // A legacy side is upgraded to the split layout by an update.
             let draft = root.appendingPathComponent("drafts/\(run.id)")
             try JSONEncoder().encode(photo).write(to: draft.appendingPathComponent("0.json"))
             try FileManager.default.removeItem(at: draft.appendingPathComponent("0.jpg"))
@@ -285,12 +276,10 @@ import ZIPFoundation
             let backup = root.deletingLastPathComponent().appendingPathComponent("draft-backup")
             try FileManager.default.copyItem(at: draft, to: backup)
             _ = try await store.commitCapture(runID: run.id, gps: Provenance(status: .unavailable))
-            // The app was killed after publishing but before the draft was cleared.
             try FileManager.default.moveItem(at: backup, to: draft)
             let reopened = try PackageStore(root: root)
             #expect(try await reopened.draftPhotos(runID: run.id).isEmpty)
 
-            // A retake killed between its JPEG and metadata files leaves a side the next read drops.
             try await reopened.saveDraftPhoto(photo, runID: run.id, side: 0)
             try await reopened.saveDraftPhoto(photo, runID: run.id, side: 1)
             try Data([0xff, 0xd8, 0x07, 0xff, 0xd9]).write(to: draft.appendingPathComponent("0.jpg"))
@@ -306,7 +295,6 @@ import ZIPFoundation
             let identity = root.appendingPathComponent("install-id")
             #expect(try identity.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
             let token = await store.deviceToken
-            // An install that predates the exclusion gains it on the next launch, keeping its value.
             var values = URLResourceValues()
             values.isExcludedFromBackup = false
             var mutable = identity

@@ -1,6 +1,5 @@
 import XCTest
 
-/// Kotlin's capture "Tree ID" field for a run created with automatic IDs turned off.
 final class ManualTreeIDTests: XCTestCase {
     @MainActor func testManualTreeIDInPortrait() { checkManualTreeID(.portrait) }
     @MainActor func testManualTreeIDInLandscape() { checkManualTreeID(.landscapeLeft) }
@@ -19,7 +18,6 @@ final class ManualTreeIDTests: XCTestCase {
         app.staticTexts["DAMIMAS · QM"].tap()
         app.buttons.containing(.staticText, identifier: "Tangkap sampel").firstMatch.tap()
 
-        // The field starts at the run's next number, one past the committed sample 3.
         let field = app.textFields["manual-tree-id"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         XCTAssertEqual(field.value as? String, "4")
@@ -28,7 +26,6 @@ final class ManualTreeIDTests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
 
-        // A taken number is refused and the draft stays.
         replace(field, with: "3", in: app)
         save(app)
         let refusal = app.alerts["PalmAnnotate"]
@@ -46,7 +43,6 @@ final class ManualTreeIDTests: XCTestCase {
 
     @MainActor
     private func replace(_ field: XCUIElement, with text: String, in app: XCUIApplication) {
-        // The field stays disabled while the screen opens the draft.
         let ready = expectation(for: NSPredicate(format: "isEnabled == true AND isHittable == true"), evaluatedWith: field)
         wait(for: [ready], timeout: 15)
         field.tap()
@@ -57,7 +53,6 @@ final class ManualTreeIDTests: XCTestCase {
         app.buttons["Selesai"].tap()
     }
 
-    /// Saves past the missing-GPS review, which UI tests always raise.
     @MainActor
     private func save(_ app: XCUIApplication) {
         let save = app.buttons["Simpan sampel"]

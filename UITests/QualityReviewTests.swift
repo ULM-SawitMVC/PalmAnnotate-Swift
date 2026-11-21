@@ -1,6 +1,5 @@
 import XCTest
 
-/// The capture and export quality reviews ported from Kotlin `QualityGateModal`.
 final class QualityReviewTests: XCTestCase {
     @MainActor
     func testQualityReviewInPortrait() {
@@ -26,7 +25,6 @@ final class QualityReviewTests: XCTestCase {
         app.staticTexts["DAMIMAS · QC"].tap()
         app.buttons.containing(.staticText, identifier: "Tangkap sampel").firstMatch.tap()
 
-        // UI tests skip GPS, so saving the complete draft raises the missing-GPS warning.
         let save = app.buttons["Simpan sampel"]
         XCTAssertTrue(save.waitForExistence(timeout: 10))
         reveal(save, in: app)
@@ -52,10 +50,8 @@ final class QualityReviewTests: XCTestCase {
         XCTAssertTrue(photo.waitForExistence(timeout: 15), "Saving anyway must commit and open the sample")
         XCTAssertTrue(app.navigationBars["DAMIMAS_QC_0001"].exists)
 
-        // Like Kotlin, a draft sample can be exported from Results.
         app.buttons["Hasil"].tap()
         XCTAssertTrue(app.navigationBars["Hasil"].waitForExistence(timeout: 5))
-        // The export section follows the per-side counts, and a List creates rows only once they are visible.
         let prepare = app.buttons["Siapkan berkas"]
         reveal(prepare, in: app, scrolling: app.collectionViews["results-list"])
         prepare.tap()
@@ -79,7 +75,6 @@ final class QualityReviewTests: XCTestCase {
 
     @MainActor
     private func reveal(_ element: XCUIElement, in app: XCUIApplication, scrolling container: XCUIElement? = nil) {
-        // Swipe the list itself: in landscape a swipe on the app does not always reach it.
         for _ in 0..<6 where !element.exists || !element.isHittable { (container ?? app).swipeUp() }
         XCTAssertTrue(element.isHittable, "Cannot reach \(element)")
     }

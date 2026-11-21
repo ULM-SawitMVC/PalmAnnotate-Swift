@@ -33,10 +33,8 @@ struct CaptureScreen: View {
     @State private var showRetakeAll = false
     @State private var showStopRecording = false
     @State private var qualityReport: QualityCheck.Report?
-    /// Kotlin's capture "Tree ID" field for a run without automatic numbering. Digits only.
     @State private var manualID = ""
     @FocusState private var editingID: Bool
-    /// Detection runs after the photo is in the draft, so the next side can be taken right away.
     @State private var detections: [Int: Task<Void, Never>] = [:]
     @State private var detectionNotice: String?
     #if targetEnvironment(simulator)
@@ -54,7 +52,6 @@ struct CaptureScreen: View {
                     Button("Tutup") { if recording { showStopRecording = true } else { dismiss() } }
                         .disabled(busy && !recording)
                 }
-                // The number pad has no return key.
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Selesai") { editingID = false }
@@ -95,7 +92,6 @@ struct CaptureScreen: View {
                 for task in detections.values { task.cancel() }
                 UIApplication.shared.isIdleTimerDisabled = false
             }
-            // Kotlin keeps the screen on while recording. An auto-lock would end the take.
             .onChange(of: recording) { _, value in
                 UIApplication.shared.isIdleTimerDisabled = value
                 recordingStarted = value ? .now : nil
@@ -188,7 +184,6 @@ struct CaptureScreen: View {
         }
     }
 
-    /// Kotlin shows the locked run and the GPS line above the camera.
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("\(draft.count) / \(run.sideCount) foto").font(.headline)
@@ -293,7 +288,6 @@ struct CaptureScreen: View {
         }
     }
 
-    /// Kotlin's review pager: swipe between the photos taken so far, then retake any side.
     private func reviewPager(selection: Int) -> some View {
         let binding = Binding<Int>(get: { reviewedSide ?? selection }, set: { reviewedSide = $0 })
         return TabView(selection: binding) {
@@ -444,8 +438,6 @@ struct CaptureScreen: View {
             reviewedSide = draft.indices.last
             for index in draft.indices { render(index) }
         } catch {
-            // Kotlin's "Capture draft INVALID" state: the draft cannot be read, so the operator can
-            // only discard it. Without this the screen would reject every new photo.
             draftInvalid = true
         }
         #if DEBUG
@@ -476,8 +468,6 @@ struct CaptureScreen: View {
         work("Memulai rekaman…") {
             try await clearDraft()
             try await camera.startVideo(rotation: rotation) {
-                // The system ended the recording (a call, another camera client, or full
-                // storage). Photos taken during it cannot be saved without their video.
                 guard recording else { return }
                 recording = false
                 error = CaptureError.recordingInterrupted.localizedDescription
@@ -498,8 +488,6 @@ struct CaptureScreen: View {
         if !run.type.requiresVideo { detect(photo, side: index) }
     }
 
-    /// Adds detector suggestions to a saved draft side. The store applies them only while that side
-    /// still holds the same JPEG, so a retake during inference keeps the new photo's own result.
     private func detect(_ photo: CapturedPhoto, side: Int) {
         detections[side]?.cancel()
         let runID = run.id
@@ -529,7 +517,6 @@ struct CaptureScreen: View {
         thumbnails[index] = previewImage(draft[index].jpeg, maxPixel: 168)
     }
 
-    /// Kotlin `CaptureFlowViewModel.requestSave`: review WARN and ERROR reports before committing.
     private func requestSave() {
         let report = QualityCheck.analyzeCapture(run: run, capturedSides: draft.count, gps: gps.provenance.atCommit(.now))
         if report.needsReview { qualityReport = report } else { commit() }
@@ -537,13 +524,11 @@ struct CaptureScreen: View {
 
     private func commit() {
         work("Menyimpan sampel…") {
-            // Kotlin `awaitPendingDraftWrites`: the sample is published with every finished detection.
             if !detections.isEmpty {
                 busyLabel = "Menunggu deteksi…"
                 for task in detections.values { await task.value }
                 busyLabel = "Menyimpan sampel…"
             }
-            // Kotlin: an empty or unreadable field falls back to the run's next number.
             var treeNumber: Int?
             if !run.autoId {
                 let fallback = (try? await store.run(id: run.id))?.nextNumber ?? 1
@@ -589,7 +574,6 @@ struct CaptureScreen: View {
     }
 }
 
-/// Kotlin's commit failure text, followed by the cause.
 private struct SaveFailure: LocalizedError {
     let detail: String
     var errorDescription: String? { "Sampel tidak dapat disimpan. Periksa penyimpanan lalu coba lagi. (\(detail))" }

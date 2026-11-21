@@ -29,7 +29,6 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     postBuildScripts:
-      # Device acceptance records the build SHA, so the hub footer shows it.
       - name: Stamp source revision
         basedOnDependencyAnalysis: false
         # Declaring the processed plist orders this script after Info.plist processing.

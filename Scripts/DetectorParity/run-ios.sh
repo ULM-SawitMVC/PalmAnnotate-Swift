@@ -11,7 +11,6 @@ repo=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$repo"
 ./Scripts/prepare-detector.sh >&2
 
-# Use a standalone generated project so the field harness stays out of the app build.
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cp project.yml "$work/production.yml"

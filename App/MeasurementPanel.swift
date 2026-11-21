@@ -5,8 +5,6 @@ enum MeasurementField: Hashable {
     case weight, height, circumference, notes
 }
 
-/// The text of the bunch weight form. Kotlin keeps these as strings until Apply, so a half-typed value is never
-/// saved and an empty optional field stays nil.
 struct MeasurementDraft: Equatable {
     var weight = ""
     var height = ""
@@ -40,8 +38,6 @@ struct MeasurementDraft: Equatable {
     }
 }
 
-/// Kotlin `BunchMeasurementPanel`, inline so the photo stays visible: required weight, collapsible optional
-/// details, and one validation message. Apply sits in `MeasurementApplyBar`, pinned above the keyboard.
 struct MeasurementFields: View {
     let number: Int
     @Binding var draft: MeasurementDraft
@@ -106,8 +102,6 @@ struct MeasurementFields: View {
     }
 }
 
-/// Pinned above the keyboard. The decimal pad has no return key, so a button here puts it away; a keyboard
-/// accessory bar would sit over this bar and swallow taps meant for Apply.
 struct MeasurementApplyBar: View {
     let error: String?
     let disabled: Bool

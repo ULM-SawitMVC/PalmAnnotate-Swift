@@ -1,4 +1,4 @@
-/// Kotlin `SuggestionEngine` category: AUTO at or above `autoMin`, CANDIDATE below it.
+/// AUTO at or above `autoMin`, CANDIDATE below it.
 public enum LinkCategory: String, Equatable, Sendable {
     case auto, candidate
 
@@ -15,7 +15,6 @@ public struct LinkSuggestion: Identifiable, Equatable, Sendable {
     public let b: BoxRef
     public let score: Float
     public var category: LinkCategory { LinkCategory(score: score) }
-    /// Kotlin `(score * 100).toInt()`.
     public var percent: Int { Int(score * 100) }
     public var id: String { "\(a.side):\(a.box)-\(b.side):\(b.box)" }
 }
@@ -46,7 +45,7 @@ extension TreeDocument {
         }
     }
 
-    /// Kotlin `linkGroupFor`: a 1-based group number per linked box, numbered by the order each group's first
+    /// A 1-based group number per linked box, numbered by the order each group's first
     /// link was confirmed, so adding a link never renumbers an existing group.
     public func linkGroups() -> [BoxRef: Int] {
         var parent: [BoxRef: BoxRef] = [:]
@@ -69,7 +68,7 @@ extension TreeDocument {
         return Dictionary(uniqueKeysWithValues: parent.keys.map { ($0, numbers[root($0)] ?? 1) })
     }
 
-    /// Kotlin `detectCurrentSide` merge: new boxes get `det<n>` ids (one past the highest numeric suffix on the
+    /// New boxes get `det<n>` ids (one past the highest numeric suffix on the
     /// side), boxes overlapping an existing one by IoU above 0.5 are skipped, and an empty suggestion baseline
     /// is seeded with the new boxes.
     @discardableResult

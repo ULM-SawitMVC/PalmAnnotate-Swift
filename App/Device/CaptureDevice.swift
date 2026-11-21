@@ -137,8 +137,6 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
             }
         }
         defer { try? FileManager.default.removeItem(at: movie) }
-        // The movie output records H.264 and AAC, so a passthrough remux into MP4 keeps the camera's
-        // frames and finishes quickly. Re-encode only when the remux is not possible.
         var failure: Error = CaptureError.video
         for preset in [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality] {
             let target = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
@@ -259,7 +257,6 @@ struct CameraPreview: UIViewRepresentable {
 final class CaptureLocation: NSObject, @preconcurrency CLLocationManagerDelegate {
     @ObservationIgnored private let manager = CLLocationManager()
     private(set) var provenance = Provenance(status: .unavailable)
-    /// A request is outstanding and nothing has come back yet.
     private(set) var locating = false
 
     override init() {
@@ -299,7 +296,6 @@ final class CaptureLocation: NSObject, @preconcurrency CLLocationManagerDelegate
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         locating = false
-        // A failure replaces the previous fix, as in Kotlin.
         if (error as? CLError)?.code == .denied || manager.authorizationStatus == .denied {
             judgeDenial()
         } else {
@@ -307,8 +303,8 @@ final class CaptureLocation: NSObject, @preconcurrency CLLocationManagerDelegate
         }
     }
 
-    /// iOS reports a system-wide Location Services switch as a denial. Kotlin records that case as
-    /// `LOCATION_OFF`. The check can block, so it runs off the main actor.
+    /// iOS reports a system-wide Location Services switch as a denial. The check can block, so it
+    /// runs off the main actor.
     private func judgeDenial() {
         provenance = Provenance(status: .permissionDenied)
         Task {
@@ -317,7 +313,6 @@ final class CaptureLocation: NSObject, @preconcurrency CLLocationManagerDelegate
         }
     }
 
-    /// Kotlin `describeGps`: the operator's GPS line. A stale fix never reads as a live one.
     func describe(at date: Date) -> String {
         let judged = provenance.atCommit(date)
         let coordinates = judged.latitude.flatMap { latitude in
@@ -337,9 +332,6 @@ final class CaptureLocation: NSObject, @preconcurrency CLLocationManagerDelegate
     }
 }
 
-/// Port of Kotlin `JpegOrientationNormalizer`. A JPEG that already stands upright keeps the camera's
-/// bytes. Any other photo is drawn upright and re-encoded at full quality, so the stored pixels never
-/// depend on an EXIF orientation tag.
 @MainActor
 func normalizedPhoto(_ data: Data) throws -> CapturedPhoto {
     guard let image = UIImage(data: data), image.size.width > 0, image.size.height > 0 else { throw CaptureError.photo }
@@ -354,8 +346,6 @@ func normalizedPhoto(_ data: Data) throws -> CapturedPhoto {
     return CapturedPhoto(jpeg: bytes, width: Int(image.size.width), height: Int(image.size.height))
 }
 
-/// A downsampled image for previews and thumbnails. Decoding full photos for every side would hold
-/// tens of megabytes per side.
 func previewImage(_ data: Data, maxPixel: Int) -> UIImage? {
     guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
     let options: [CFString: Any] = [

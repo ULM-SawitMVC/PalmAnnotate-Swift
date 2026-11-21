@@ -11,7 +11,6 @@ final class DetectorParityTests: XCTestCase {
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         XCTAssertFalse(images.isEmpty)
         let detector = Detector()
-        // The first call creates the ONNX session. Time it separately from steady-state inference.
         let clock = ContinuousClock()
         let cold = try await clock.measure { _ = try await detector.predictions(jpeg: Data(contentsOf: images[0])) }
         print("PALM_DETECT_COLD_MS \(cold.milliseconds)")

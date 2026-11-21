@@ -104,7 +104,6 @@ import ZIPFoundation
         let run = try await store.createRun(type: .multisideVideo, variety: "DAMIMAS", block: "QA", operatorName: "",
                                               sideCount: sideCount, split: "field", tokenized: false)
         let recording = directory.appendingPathComponent("accepted.mp4")
-        // CaptureDevice validates the tracks before giving PackageStore the file.
         let video = Data("accepted video payload".utf8)
         try video.write(to: recording)
         for side in 0..<sideCount { try await store.saveDraftPhoto(photo, runID: run.id, side: side) }

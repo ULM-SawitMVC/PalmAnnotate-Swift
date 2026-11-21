@@ -1,4 +1,4 @@
-/// Kotlin `SessionUseCases.MismatchCluster`: a linked bunch whose boxes carry different ripeness classes.
+/// A linked bunch whose boxes carry different ripeness classes.
 public struct ClassMismatch: Identifiable, Equatable, Sendable {
     /// The first member, so the identity survives re-sorting and class edits.
     public let id: String
@@ -7,7 +7,7 @@ public struct ClassMismatch: Identifiable, Equatable, Sendable {
     /// Members in side then box order, each with its current class.
     public let members: [(ref: BoxRef, ripeness: Ripeness)]
     public let observed: Set<Ripeness>
-    /// The most common class. A tie goes to the class seen first, like Kotlin's `maxByOrNull` over `groupBy`.
+    /// The most common class. A tie goes to the class seen first.
     public let majority: Ripeness
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
@@ -38,7 +38,7 @@ extension TreeDocument {
         }
     }
 
-    /// Kotlin `resolveAllMismatches`: set every member of each mismatched bunch to its chosen class, or the
+    /// Sets every member of each mismatched bunch to its chosen class, or the
     /// majority when no choice is given. Keys are `ClassMismatch.id`.
     public mutating func resolveClassMismatches(_ choices: [String: Ripeness] = [:]) {
         for mismatch in classMismatches() {

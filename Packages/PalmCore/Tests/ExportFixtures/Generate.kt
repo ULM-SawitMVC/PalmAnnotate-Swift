@@ -13,7 +13,6 @@ import org.json.JSONObject
 import java.io.File
 import java.time.Instant
 
-// Android-free file adapter for the original manifest and repository producer bodies.
 internal class AndroidStorageManager(val rootDir: File) {
     fun imageFile(tree: String, side: Int) = File(rootDir, "images/field/${tree}_${side + 1}.jpg")
     fun depthRawFile(tree: String, side: Int) = File(rootDir, "depth/field/${tree}_${side + 1}.raw")
@@ -136,7 +135,6 @@ fun main(args: Array<String>) {
             put("labels", JSONArray(labels))
             put("logs", JSONArray(sides.map { repository.log(session, it, saveMs) }))
             put("paths", JSONArray(paths.sorted()))
-            // Preserve the exact Kotlin bytes used by its two JSON digests and descriptor.
             put("outputText", outputText)
             put("metadataText", metadataText)
             put("manifestText", manifest)

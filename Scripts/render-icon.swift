@@ -1,6 +1,4 @@
 #!/usr/bin/env swift
-// Renders the 1024x1024 app icon: a fan of palm fronds above a fruit bunch on green.
-// Usage: swift Scripts/render-icon.swift App/Assets.xcassets/AppIcon.appiconset/icon-1024.png
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -20,12 +18,10 @@ func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
                                             CGFloat(hex & 0xff) / 255, alpha])!
 }
 
-// Background: deep to bright palm green, top to bottom in CoreGraphics' bottom-up space.
 let gradient = CGGradient(colorsSpace: space, colors: [color(0x1B5E20), color(0x2E7D32), color(0x43A047)] as CFArray,
                           locations: [0, 0.55, 1])!
 context.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: CGFloat(size)), options: [])
 
-// Fronds: nine tapered leaves fanned from one base point, each with a lighter midrib.
 let base = CGPoint(x: 512, y: 430)
 let angles: [CGFloat] = [-80, -60, -40, -20, 0, 20, 40, 60, 80]
 for angle in angles {
@@ -50,7 +46,6 @@ for angle in angles {
     context.restoreGState()
 }
 
-// Fruit bunch: packed orange-brown fruits under the fronds.
 let fruits: [(CGFloat, CGFloat, CGFloat)] = [
     (512, 330, 92), (420, 300, 82), (604, 300, 82), (512, 235, 86), (440, 205, 72), (584, 205, 72), (512, 150, 66)
 ]

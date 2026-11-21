@@ -40,12 +40,6 @@ actor Detector {
 
     private static let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
 
-    /// Returns the letterbox-sized photo as packed sRGB bytes.
-    ///
-    /// Android scales the decoder's raw bytes, then draws the result onto an sRGB bitmap, which
-    /// converts a Display P3 or other tagged photo. Do the same: scale first, then convert the small
-    /// image. For an sRGB photo the conversion leaves every byte unchanged. A layout other than 8-bit
-    /// RGB is drawn into sRGB at full size instead.
     private static func scaledSRGB(_ image: CGImage, letterbox: Letterbox) -> [UInt8]? {
         let order = image.bitmapInfo.intersection(.byteOrderMask)
         let layout: (bytes: Int, red: Int)? = switch (image.bitsPerPixel, image.alphaInfo) {

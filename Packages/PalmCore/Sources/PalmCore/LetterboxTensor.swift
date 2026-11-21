@@ -13,9 +13,6 @@ extension Letterbox {
     ///   point in between.
     /// - Taps clamp to the image edge.
     ///
-    /// Core Graphics averages many source pixels when it shrinks a photo. That moves boxes by several
-    /// original pixels against Android, so this method avoids it.
-    ///
     /// - Parameters:
     ///   - pixels: The decoded image, `width` x `height`, with the red byte at `redOffset` and green
     ///     and blue following it.

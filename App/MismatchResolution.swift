@@ -1,8 +1,6 @@
 import PalmCore
 import SwiftUI
 
-/// Kotlin `MismatchResolveModal`: each linked bunch with inconsistent classes lists its members, and the
-/// operator picks one class for the whole bunch. Chips start on the majority class.
 struct MismatchResolutionSheet: View {
     let mismatches: [ClassMismatch]
     let applyTitle: String

@@ -92,7 +92,6 @@ struct ResultsView: View {
         }
     }
 
-    /// Kotlin `ResultsViewModel.exportGated`: review any non-OK tree report before exporting.
     private func requestExport() {
         let report = QualityCheck.analyzeTree(document)
         if report.needsReview { qualityReport = report } else { prepare() }
@@ -111,7 +110,6 @@ struct ResultsView: View {
                 try ExportCodec.annotLog(document, side: side).write(to: url, options: .atomic)
                 return url
             }
-            // Kotlin's Output JSON and YOLO exports write the same files the ZIP carries under json/ and labels/.
             let output = folder.appendingPathComponent(document.id + ".json")
             try ExportCodec.output(document, generatedAt: document.savedAt).write(to: output, options: .atomic)
             let labels = try document.sides.map { side in

@@ -2,7 +2,6 @@ import AVKit
 import PalmCore
 import SwiftUI
 
-/// One ZIP export at a time: progress, cancellation, and the hand-off to the share sheet.
 @MainActor @Observable
 final class ExportJob {
     private(set) var running = false
@@ -28,7 +27,6 @@ final class ExportJob {
             }
             do {
                 #if DEBUG
-                // Gives UI tests a window in which the progress sheet is visible and can be cancelled.
                 if ProcessInfo.processInfo.arguments.contains("--ui-test-slow-export") {
                     try await Task.sleep(for: .seconds(3))
                 }
@@ -51,7 +49,6 @@ final class ExportJob {
 
     func cancel() { task?.cancel() }
 
-    /// Forgets a finished archive once the data it was built from may have changed.
     func reset() {
         guard !running else { return }
         discardArchive()
@@ -126,7 +123,6 @@ private struct ExportPresenter: ViewModifier {
     }
 }
 
-/// The result rows shared by both export entry points.
 private struct ExportResult: View {
     let job: ExportJob
     let shareTitle: String
@@ -311,7 +307,6 @@ private struct NewRun: View {
         }
     }
 
-    /// Mirrors `PackageStore.createRun`: a started run keeps its naming, and an unstarted one adopts the token.
     private var tokenLocked: Bool {
         guard let match else { return false }
         return !match.captureSet.nameToken.isEmpty || (counts[match.id]?.samples ?? 0) > 0 || match.nextNumber != 1
@@ -409,7 +404,6 @@ private struct NewRun: View {
         }
     }
 
-    // Kotlin `InputCache`: the next session starts from the previous entries.
     private var defaults: UserDefaults? {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-test") { return nil }
@@ -523,7 +517,6 @@ struct RunDetail: View {
             Task { await load() }
         }) {
             CaptureScreen(run: run, store: store) { document in
-                // Kotlin opens the editor after a photo capture and returns to the list after a video one.
                 if !run.type.requiresVideo { pendingCaptureID = TreeID(value: document.id) }
             }
         }
@@ -575,7 +568,6 @@ struct RunDetail: View {
     }
 }
 
-/// Kotlin `VideoTreeViewer`: a read-only pager of the photos with a switch to the recording.
 private struct VideoSampleView: View {
     let id: String
     let store: PackageStore

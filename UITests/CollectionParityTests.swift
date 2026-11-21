@@ -1,6 +1,5 @@
 import XCTest
 
-/// Run deletion, ZIP export progress and sharing, fixed weight photo slots, manual IDs, and the hub footer.
 final class CollectionParityTests: XCTestCase {
     @MainActor
     private func launch(_ orientation: UIDeviceOrientation, _ extra: [String] = []) -> XCUIApplication {
@@ -38,7 +37,6 @@ final class CollectionParityTests: XCTestCase {
         let version = app.staticTexts["hub-version"]
         XCTAssertTrue(version.waitForExistence(timeout: 30))
         XCTAssertTrue(version.isHittable)
-        // Version, build, and the source revision stamped at build time.
         XCTAssertNotNil(version.label.range(of: #"^v0\.1\.0 \(\d+\) · [0-9a-f]{8}(-dirty)?$"#, options: .regularExpression), version.label)
         XCTAssertEqual(app.staticTexts["hub-data-hint"].label, "Data hanya tersimpan di aplikasi ini. Ekspor ZIP untuk memindahkan data.")
         XCTAssertTrue(app.staticTexts["hub-data-hint"].isHittable)
@@ -83,7 +81,6 @@ final class CollectionParityTests: XCTestCase {
         let toggle = app.switches["ID otomatis"]
         reveal(toggle, in: app)
         XCTAssertEqual(toggle.value as? String, "1")
-        // The row is a label and a switch; the switch sits at the trailing edge on every width.
         let edge = toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
         if UIDevice.current.userInterfaceIdiom == .pad {
             edge.withOffset(CGVector(dx: -45, dy: 0)).tap()
@@ -96,7 +93,6 @@ final class CollectionParityTests: XCTestCase {
         for _ in 0..<3 where !note.exists { app.swipeUp() }
         XCTAssertTrue(note.exists)
         app.buttons["Simpan"].tap()
-        // The run header only lists the ID mode for manual runs.
         let row = app.staticTexts["ID pohon"]
         XCTAssertTrue(row.waitForExistence(timeout: 10) || { app.swipeUp(); return row.waitForExistence(timeout: 5) }())
     }
@@ -120,7 +116,6 @@ final class CollectionParityTests: XCTestCase {
         XCTAssertTrue(stats.exists)
         for label in ["Sesi", "Pohon", "Foto"] { XCTAssertTrue(stats.staticTexts[label].exists, label) }
         XCTAssertTrue(stats.staticTexts["8"].exists, "2 trees x 4 photos")
-        // The session written most recently comes first: A1 holds the seeded trees.
         XCTAssertLessThan(kept.frame.minY, doomed.frame.minY)
 
         doomed.swipeLeft()
@@ -132,7 +127,6 @@ final class CollectionParityTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["DAMIMAS · B2"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["DAMIMAS · A1"].exists)
 
-        // The trees of a deleted run go with it.
         app.staticTexts["DAMIMAS · A1"].press(forDuration: 1.2)
         app.buttons["Hapus"].firstMatch.tap()
         XCTAssertTrue(app.alerts["Hapus sesi?"].staticTexts.element(boundBy: 1).label.contains("beserta 2 pohon"))

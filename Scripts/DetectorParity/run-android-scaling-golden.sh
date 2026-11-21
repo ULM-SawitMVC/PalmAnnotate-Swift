@@ -1,5 +1,4 @@
 #!/bin/sh
-# Prints the Android bitmap-scaling hashes that PalmCore's LetterboxTensorTests expect.
 set -eu
 
 if [ "$#" -ne 1 ]; then

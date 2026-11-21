@@ -10,12 +10,12 @@ import Testing
     let rows: [[Float]] = [
         [50, 30, 20, 10, 0.80, 0.10],
         [60, 70, 10, 10, 0.20, 0.80],
-        [50, 30, 20, 10, 0.20, 0.70], // Suppressed across class channels.
-        [20, 70, 5, 5, 0.99, 0],    // Entirely in the padding.
-        [55, 70, 0.4, 5, 0.99, 0],  // Width below one original pixel.
+        [50, 30, 20, 10, 0.20, 0.70],
+        [20, 70, 5, 5, 0.99, 0],
+        [55, 70, 0.4, 5, 0.99, 0],
         [50, 80, 10, 10, 0.009, 0],
-        [75, 80, 12, 12, 0.01, 0],  // Exact confidence threshold, clipped to the right edge.
-        [35, 20, 10, 10, 0.01, 0],  // Beyond the cap, after the earlier tie.
+        [75, 80, 12, 12, 0.01, 0],
+        [35, 20, 10, 10, 0.01, 0],
     ]
     let channels = (0..<6).flatMap { channel in rows.map { $0[channel] } }
     for (values, shape) in [(rows.flatMap { $0 }, [1, rows.count, 6]), (channels, [1, 6, rows.count])] {

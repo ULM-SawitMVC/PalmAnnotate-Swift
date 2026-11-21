@@ -34,7 +34,6 @@ cat > AndroidManifest.xml <<'XML'
 </manifest>
 XML
 
-# Include the Kotlin standard library in the compiled JAR.
 kotlinc src/test/kotlin/*.kt -classpath "$android:ort.jar:coroutines.jar" -include-runtime -d probe.jar >&2
 "$build_tools/d8" --lib "$android" --min-api 28 probe.jar ort.jar coroutines.jar >&2
 "$build_tools/aapt2" link -I "$android" --manifest AndroidManifest.xml -A src/main/assets -o unsigned.apk >&2
@@ -48,7 +47,6 @@ keytool -genkeypair -alias palm-parity -keyalg RSA -keystore parity.jks \
 "$adb" -s "$serial" shell am instrument -w \
     dev.sawitulm.palmannotate.detectorparity/dev.sawitulm.palmannotate.data.detection.AndroidDetectorInstrumentation \
     > result.txt
-# The APK contains the local inputs. Remove this scratch package after the test.
 "$adb" -s "$serial" uninstall dev.sawitulm.palmannotate.detectorparity >&2
 if ! grep -q '^INSTRUMENTATION_CODE: -1' result.txt; then
     cat result.txt >&2

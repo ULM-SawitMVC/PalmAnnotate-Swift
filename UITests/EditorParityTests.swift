@@ -1,6 +1,5 @@
 import XCTest
 
-/// Editor behaviours ported from Kotlin `CarouselScreen`, `DeduplicationScreen` and `MismatchResolveModal`.
 final class EditorParityTests: XCTestCase {
     // MARK: Back
 
@@ -79,7 +78,6 @@ final class EditorParityTests: XCTestCase {
         attachScreenshot("Panel berat dengan pesan galat")
 
         weight.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5) + "12,5")
-        // The decimal pad has no return key: the button beside Apply puts it away.
         let hide = app.buttons["measurement-hide-keyboard"]
         XCTAssertTrue(hide.isHittable)
         hide.tap()
@@ -136,7 +134,6 @@ final class EditorParityTests: XCTestCase {
         let app = launch(orientation, "--ui-test-quality")
         openMultisideEditor(app)
 
-        // A bunch on each side of the seam between Foto 1 and Foto 2, the first one graded B1.
         drawBox(app, from: CGVector(dx: 0.02, dy: 0.35), to: CGVector(dx: 0.18, dy: 0.65))
         app.buttons["B1"].tap()
         app.buttons["Foto 2"].tap()
@@ -165,7 +162,6 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(confirmed.waitForNonExistence(timeout: 5), "Removing a confirmed link takes it off the list")
         XCTAssertTrue(app.staticTexts["OTOMATIS"].waitForExistence(timeout: 5), "and the pair is suggested again")
 
-        // Link again, then compute: Foto 1 is B1 and Foto 2 is unassigned, so the bunch needs a class.
         app.buttons["Terima semua otomatis (1)"].tap()
         XCTAssertTrue(confirmed.waitForExistence(timeout: 5))
         app.buttons["dedup-compute"].tap()
@@ -183,7 +179,6 @@ final class EditorParityTests: XCTestCase {
         for _ in 0..<3 where !linked.exists { app.swipeUp() }
         XCTAssertTrue(linked.exists, "The results count linked duplicates")
         if orientation == .portrait {
-            // A landscape phone shows too few rows to count on the class list being built.
             XCTAssertTrue(app.staticTexts["B3"].waitForExistence(timeout: 10), "The chosen class is the one counted")
         }
     }
@@ -209,10 +204,8 @@ final class EditorParityTests: XCTestCase {
         app.buttons.containing(.staticText, identifier: "Tangkap sampel").firstMatch.tap()
         let save = app.buttons["Simpan sampel"]
         XCTAssertTrue(save.waitForExistence(timeout: 90))
-        // The button stays disabled while the capture screen prepares the camera.
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: save)
         XCTAssertEqual(XCTWaiter().wait(for: [enabled], timeout: 90), .completed)
-        // Tapping scrolls the control into view; a manual swipe closes the capture sheet on a landscape phone.
         save.tap()
         let saveAnyway = app.buttons["Simpan tetap"]
         XCTAssertTrue(saveAnyway.waitForExistence(timeout: 5))
@@ -221,13 +214,11 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["DAMIMAS_QC_0001"].exists)
     }
 
-    /// The sample row: its text is a separate element in portrait and part of the row's label in landscape.
     @MainActor
     private func sampleRow(_ app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'DAMIMAS_QA_BW_0001'")).firstMatch
     }
 
-    /// The session list is lazy and a landscape phone shows few rows, so scroll until the sample is built.
     @MainActor
     private func tapSample(_ app: XCUIApplication) {
         let sample = sampleRow(app)
@@ -255,7 +246,6 @@ final class EditorParityTests: XCTestCase {
         return photo
     }
 
-    /// Draws a box in Edit mode; the new box stays selected.
     @MainActor
     private func drawBox(_ app: XCUIApplication, from: CGVector, to: CGVector) {
         let edit = app.segmentedControls.buttons["Edit"]
@@ -274,7 +264,6 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(element.isHittable, "Cannot reach \(element)")
     }
 
-    /// Taps a field and waits for its keyboard; a slow simulator can swallow the first tap.
     @MainActor
     private func focus(_ field: XCUIElement, in app: XCUIApplication) {
         field.tap()

@@ -16,7 +16,6 @@ public struct CapturedPhoto: Codable, Sendable {
     }
 }
 
-/// A run with the counts and last-update time shown in the run list.
 public struct RunSummary: Identifiable, Equatable, Sendable {
     public let run: CollectionRun
     public let treeCount: Int
@@ -27,7 +26,6 @@ public struct RunSummary: Identifiable, Equatable, Sendable {
     public var id: String { run.id }
 }
 
-/// Metadata kept beside a draft photo. A legacy draft embeds the JPEG here instead of in `{side}.jpg`.
 private struct DraftSide: Codable {
     var width: Int
     var height: Int
@@ -80,7 +78,6 @@ public actor PackageStore {
             try Data(value.utf8).write(to: identity, options: .atomic)
             installID = value
         }
-        // A restored backup must not clone this device's token onto another device.
         var excluded = identity
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
@@ -103,7 +100,6 @@ public actor PackageStore {
 
     public func createRun(type: DatasetType, variety: String, block: String, operatorName: String,
                           sideCount: Int, split: String, tokenized: Bool, autoId: Bool = true) throws -> CollectionRun {
-        // The form requires a variety; one without usable characters falls back to TREE as in Kotlin.
         guard !variety.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw StoreError.invalidRun }
         let variety = CollectionRun.sanitizedVariety(variety)
         let block = CollectionRun.sanitizedBlock(block)
@@ -147,7 +143,7 @@ public actor PackageStore {
         }.sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    /// Removes the run, its samples, and its draft. The run file goes last so an interrupted delete can be retried.
+    /// Removes the run, its samples, and its draft.
     public func deleteRun(id: String) throws {
         let runFile = runURL(id)
         guard fm.fileExists(atPath: runFile.path) else { throw StoreError.missingItem }
@@ -180,7 +176,6 @@ public actor PackageStore {
         var photos: [CapturedPhoto] = []
         for side in 0..<count {
             guard let photo = try readDraftPhoto(runID: runID, side: side) else {
-                // A retake interrupted between its two files leaves a mismatched side; the operator retakes it.
                 for stale in side..<count { try? fm.removeItem(at: draftMetaURL(runID, stale)) }
                 break
             }
@@ -205,7 +200,6 @@ public actor PackageStore {
         if !fm.fileExists(atPath: identity.path) {
             try Data(UUID().uuidString.utf8).write(to: identity, options: .atomic)
         }
-        // The metadata names the JPEG's hash and is written last, so a half-finished retake is detectable.
         try photo.jpeg.write(to: draftJPEGURL(runID, side), options: .atomic)
         try write(DraftSide(width: photo.width, height: photo.height, suggestions: photo.suggestions,
                             sha256: sha256(photo.jpeg), jpeg: nil), to: draftMetaURL(runID, side))
@@ -320,7 +314,6 @@ public actor PackageStore {
         let tombstone = root.appendingPathComponent("staging").appendingPathComponent(UUID().uuidString)
         try fm.moveItem(at: target, to: tombstone)
         try? fm.removeItem(at: tombstone)
-        // Kotlin recomputes the counter from the survivors, which frees the deleted number.
         if var run = try? run(id: runID) {
             run.nextNumber = (try allTrees().filter { $0.run.id == runID }.map(\.number).max() ?? 0) + 1
             try write(run, to: runURL(runID))
@@ -371,7 +364,6 @@ public actor PackageStore {
         }
     }
 
-    /// Links the immutable media and writes the derived files. Returns each archive file's owning sample.
     private func prepareExport(_ trees: [TreeDocument], contents: URL, appVersion: String, date: Date,
                                onProgress: (@Sendable (Int, Int, String) -> Void)?) throws -> [String: String] {
         for folder in ["images", "labels", "json", "metadata", "manifests", "video"] {
