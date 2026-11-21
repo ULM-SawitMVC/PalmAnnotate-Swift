@@ -1,21 +1,33 @@
+import ImageIO
 import PalmCore
 import SwiftUI
 
+/// Kotlin `CarouselScreen`: one page per photo, swipe between sides in Review, edit geometry in Edit.
 struct AnnotationEditor: View {
     let id: String
     let store: PackageStore
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// Completes the sample and asks the session screen to open the next capture.
+    var onNext: (() -> Void)?
+    @Environment(\.dismiss) private var dismiss
     @State private var document: TreeDocument?
     @State private var images: [Int: UIImage] = [:]
     @State private var side = 0
+    @State private var pagerSide: Int?
     @State private var selected: BoxRef?
     @State private var pendingLink: BoxRef?
-    @State private var tool = CanvasTool.select
+    @State private var mode = EditorMode.review
+    @State private var drawing = false
+    @State private var showBoxes = true
+    @State private var reverseSwipe: Bool?
+    @State private var viewports: [Int: Viewport] = [:]
     @State private var showMeasurements = false
     @State private var showResults = false
+    @State private var showSuggestions = false
     @State private var error: String?
     @State private var status: String?
+    @State private var savedPulse = false
     @State private var saving = false
+    @State private var detecting = false
     @State private var clockwise = true
 
     var body: some View {
@@ -29,13 +41,15 @@ struct AnnotationEditor: View {
         .navigationTitle(id)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("Deteksi", systemImage: "sparkles", action: detect)
+                    .disabled(document == nil || saving || detecting)
                 Button("Hasil", systemImage: "chart.bar") { showResults = true }.disabled(document == nil || saving)
             }
         }
         .sheet(isPresented: $showMeasurements) {
             if let document, let selected, let box = document.annotation(selected) {
-                MeasurementForm(value: box.measurements) { value in
+                MeasurementForm(number: number(of: selected, in: document), value: box.measurements) { value in
                     persist { $0.setMeasurements(selected, value) }
                 }
             }
@@ -43,155 +57,303 @@ struct AnnotationEditor: View {
         .sheet(isPresented: $showResults, onDismiss: { Task { await load() } }) {
             if let document { ResultsView(document: document, store: store) }
         }
+        .sheet(isPresented: $showSuggestions) {
+            if let document {
+                LinkSuggestionSheet(document: document, clockwise: $clockwise) { pairs in
+                    persistWithStatus { tree in
+                        var accepted = 0
+                        for (a, b) in pairs where tree.canLink(a, b) {
+                            tree.link(a, b)
+                            accepted += 1
+                        }
+                        return "\(accepted) tautan tersimpan."
+                    }
+                }
+            }
+        }
         .task { await load() }
         .modifier(ErrorAlert(message: $error))
         .navigationBarBackButtonHidden(saving)
     }
 
+    // MARK: Layout
+
     private func editor(_ tree: TreeDocument) -> some View {
-        Group {
-            if verticalSizeClass == .compact {
-                HStack(alignment: .top, spacing: 16) {
-                    photoPanel(tree).frame(maxWidth: .infinity)
+        GeometryReader { proxy in
+            if proxy.size.width > proxy.size.height {
+                HStack(alignment: .top, spacing: 12) {
+                    photoPanel(tree)
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            editorTools(tree)
-                            editorActions(tree)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        controls(tree).padding(.vertical, 8)
                     }
-                    .frame(maxWidth: 360)
+                    .frame(width: min(380, proxy.size.width * 0.4))
                 }
                 .padding(.horizontal)
+                .padding(.bottom, 8)
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        editorTools(tree)
-                        photoPanel(tree)
-                        editorActions(tree)
+                VStack(spacing: 8) {
+                    photoPanel(tree)
+                        .frame(height: max(220, proxy.size.height * 0.55))
+                        .padding(.horizontal)
+                    ScrollView {
+                        controls(tree).padding(.horizontal).padding(.bottom)
                     }
-                    .padding()
-                    .frame(maxWidth: 960)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: 760)
                 }
+                .frame(maxWidth: .infinity)
             }
         }
         .disabled(saving)
     }
 
-    @ViewBuilder
     private func photoPanel(_ tree: TreeDocument) -> some View {
-        if let image = images[side], tree.sides.indices.contains(side) {
-            canvas(tree, image: image)
+        VStack(alignment: .leading, spacing: 6) {
+            sideHeader(tree)
+            pager(tree)
+                .overlay(alignment: .topLeading) { countBadge(tree) }
+                .overlay(alignment: .topTrailing) { zoomControls }
+                .overlay(alignment: .center) { drawPrompt(tree) }
+                .overlay(alignment: .bottom) { photoFooter(tree) }
         }
     }
 
-    @ViewBuilder
-    private func editorTools(_ tree: TreeDocument) -> some View {
-        sidePicker(tree)
-        if let pendingLink {
-            Label("Pilih kotak dari sisi yang bersebelahan dengan Foto \(pendingLink.side + 1).", systemImage: "link")
-            Button("Batalkan tautan") { self.pendingLink = nil }
-        }
-        Picker("Alat anotasi", selection: $tool) {
-            ForEach(CanvasTool.allCases) { Text($0.title).tag($0) }
-        }
-        .pickerStyle(.menu)
-        if tree.run.type == .multiside {
-            Toggle("Arah tangkap searah jarum jam", isOn: $clockwise)
-        }
-    }
-
-    @ViewBuilder
-    private func editorActions(_ tree: TreeDocument) -> some View {
-        if let selected, let box = tree.annotation(selected) {
-            selectionActions(tree, selected: selected, box: box)
-        }
-        if let status {
-            Text(status).foregroundStyle(.secondary).accessibilityIdentifier("save-status")
-        }
-        if tree.run.type == .bunchWeight, let error = tree.completionError {
-            Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
-        }
-        Button("Selesaikan sampel", systemImage: "checkmark.circle") {
-            persist(markComplete: true) { _ in }
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(tree.completionError != nil)
-    }
-
-    private func sidePicker(_ tree: TreeDocument) -> some View {
-        ScrollView(.horizontal) {
-            HStack {
-                ForEach(tree.sides) { item in
-                    Button("Foto \(item.id + 1)") {
-                        side = item.id
-                        selected = nil
-                        tool = .select
+    private func sideHeader(_ tree: TreeDocument) -> some View {
+        HStack(spacing: 8) {
+            Text("Foto \(side + 1) / \(tree.sides.count)")
+                .font(.headline.monospacedDigit())
+                .accessibilityIdentifier("side-counter")
+            if tree.sides.count > 1 {
+                ScrollView(.horizontal) {
+                    HStack {
+                        ForEach(tree.sides) { item in
+                            Button("Foto \(item.id + 1)") { show(side: item.id, animated: true) }
+                                .buttonStyle(.borderedProminent)
+                                .tint(side == item.id ? .accentColor : .secondary)
+                                .frame(minHeight: 44)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(side == item.id ? .accentColor : .secondary)
                 }
+                .scrollIndicators(.hidden)
             }
         }
     }
 
-    private func canvas(_ tree: TreeDocument, image: UIImage) -> some View {
-        let numbers = Dictionary(uniqueKeysWithValues: tree.clusters.enumerated().flatMap { index, cluster in
-            cluster.filter { $0.side == side }.map { ($0.box, index + 1) }
-        })
-        return AnnotationCanvas(
-            image: image, side: tree.sides[side], selected: selected?.box, tool: tool,
-            labels: numbers, weighted: tree.run.type == .bunchWeight,
-            height: verticalSizeClass == .compact ? 218 : 275,
-            onSelect: { box in selected = box.map { BoxRef(side: side, box: $0) } },
-            onDraw: { rect in
-                persist { tree in selected = tree.addBox(side: side, rect: rect) }
-            },
-            onChange: { id, rect in
-                persist { $0.changeBox(BoxRef(side: side, box: id), rect: rect) }
-            })
-            .id(side)
+    private func pager(_ tree: TreeDocument) -> some View {
+        let reversed = reverseSwipe ?? (tree.run.type == .multiside)
+        let order = reversed ? Array(tree.sides.reversed()) : tree.sides
+        let zoomed = (viewports[side]?.zoom ?? 1) > 1.001
+        return ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(order) { item in
+                    page(tree, item)
+                        .containerRelativeFrame([.horizontal, .vertical])
+                        .id(item.id)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $pagerSide)
+        .scrollDisabled(mode == .edit || zoomed || tree.sides.count < 2)
+        .scrollIndicators(.hidden)
+        .background(.black)
+        .clipShape(.rect(cornerRadius: 10))
+        .onChange(of: pagerSide) { _, value in
+            if let value, value != side { show(side: value, animated: false) }
+        }
+        .accessibilityIdentifier("side-pager")
+    }
+
+    @ViewBuilder
+    private func page(_ tree: TreeDocument, _ item: CaptureSide) -> some View {
+        if let image = images[item.id] {
+            AnnotationCanvas(
+                image: image, side: item, selected: item.id == side ? selected?.box : nil,
+                linkSource: pendingLink?.side == item.id ? pendingLink?.box : nil,
+                editing: mode == .edit, drawing: drawing && item.id == side, showBoxes: showBoxes,
+                labels: labels(tree, side: item.id), weighted: tree.run.type == .bunchWeight,
+                viewport: Binding(get: { viewports[item.id] ?? Viewport() }, set: { viewports[item.id] = $0 }),
+                onTap: { tap(box: $0, side: item.id) },
+                onGrab: { selected = BoxRef(side: item.id, box: $0) },
+                onDraw: { rect in
+                    persist { tree in
+                        if let ref = tree.addBox(side: item.id, rect: rect) { selected = ref }
+                    }
+                },
+                onChange: { box, rect in persist { $0.changeBox(BoxRef(side: item.id, box: box), rect: rect) } })
+            .accessibilityIdentifier(item.id == side ? "annotation-photo" : "annotation-photo-\(item.id + 1)")
+        } else {
+            ContentUnavailableView("Foto tidak dapat dibaca", systemImage: "photo")
+                .foregroundStyle(.white)
+        }
+    }
+
+    private func countBadge(_ tree: TreeDocument) -> some View {
+        let boxes = tree.sides[side].annotations
+        let linked = Set(tree.links.flatMap { [$0.a, $0.b] }.filter { $0.side == side }.map(\.box)).count
+        let unassigned = tree.run.type == .multiside ? boxes.filter { $0.ripeness == .unassigned }.count : 0
+        var parts = ["\(boxes.count) kotak"]
+        if unassigned > 0 { parts.append("\(unassigned) belum berkelas") }
+        if linked > 0 { parts.append("\(linked) tertaut") }
+        return Text(parts.joined(separator: " · "))
+            .font(.caption.bold())
+            .foregroundStyle(unassigned > 0 ? .yellow : .white)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(.black.opacity(0.7), in: .rect(cornerRadius: 4))
+            .padding(8)
+            .allowsHitTesting(false)
+            .accessibilityIdentifier("box-count")
+    }
+
+    private var zoomControls: some View {
+        let scale = viewports[side]?.zoom ?? 1
+        return VStack(spacing: 6) {
+            Button("Perbesar", systemImage: "plus.magnifyingglass") { zoom(by: 1.6) }
+                .disabled(scale >= Viewport.maxZoom)
+            Button("Perkecil", systemImage: "minus.magnifyingglass") { zoom(by: 1 / 1.6) }
+                .disabled(scale <= 1)
+            if scale > 1.001 {
+                Button("Paskan foto", systemImage: "arrow.down.right.and.arrow.up.left") { viewports[side] = Viewport() }
+            }
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.bordered)
+        .tint(.white)
+        .background(.black.opacity(0.35), in: .rect(cornerRadius: 8))
+        .padding(8)
+    }
+
+    @ViewBuilder
+    private func drawPrompt(_ tree: TreeDocument) -> some View {
+        if tree.run.type == .bunchWeight, tree.sides[side].annotations.isEmpty, !drawing, pendingLink == nil {
+            Button("Gambar kotak tandan", systemImage: "plus") {
+                mode = .edit
+                drawing = true
+                selected = nil
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+    }
+
+    @ViewBuilder
+    private func photoFooter(_ tree: TreeDocument) -> some View {
+        VStack(spacing: 6) {
+            if pendingLink != nil {
+                Text(tree.sides.count == 2 ? "Ketuk tandan yang sama pada foto ini"
+                     : "Geser ke foto bersebelahan, lalu ketuk tandan yang sama")
+                    .font(.callout.bold())
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(.yellow.opacity(0.92), in: .rect(cornerRadius: 8))
+                    .foregroundStyle(.black)
+                    .accessibilityIdentifier("link-hint")
+            }
+            if savedPulse {
+                Label("Tersimpan", systemImage: "checkmark")
+                    .font(.callout.bold())
+                    .padding(.horizontal, 14).padding(.vertical, 6)
+                    .background(.green, in: .capsule)
+                    .foregroundStyle(.white)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("saved-pulse")
+            }
+        }
+        .padding(.bottom, 12)
+        .allowsHitTesting(false)
+    }
+
+    // MARK: Controls
+
+    @ViewBuilder
+    private func controls(_ tree: TreeDocument) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Picker("Mode", selection: Binding(get: { mode }, set: setMode)) {
+                    Text("Tinjau").tag(EditorMode.review)
+                    Text("Edit").tag(EditorMode.edit)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 220)
+                Toggle("Tampilkan kotak", systemImage: showBoxes ? "eye" : "eye.slash", isOn: $showBoxes)
+                    .toggleStyle(.button)
+                    .labelStyle(.iconOnly)
+            }
+            if mode == .edit {
+                Toggle("Gambar kotak", systemImage: "crop", isOn: $drawing)
+                    .toggleStyle(.button)
+                    .onChange(of: drawing) { _, value in if value { pendingLink = nil } }
+            }
+            if detecting { ProgressView("Mendeteksi tandan…") }
+            if tree.run.type == .multiside {
+                ripenessBar(tree)
+            }
+            if let pendingLink {
+                Button("Batalkan tautan", systemImage: "xmark", role: .destructive) {
+                    self.pendingLink = nil
+                }
+                .accessibilityHint("Tautan dari foto \(pendingLink.side + 1)")
+            } else if let selected, let box = tree.annotation(selected) {
+                selectionActions(tree, selected: selected, box: box)
+            }
+            if let status {
+                Text(status).foregroundStyle(.secondary).accessibilityIdentifier("save-status")
+            }
+            if tree.run.type == .bunchWeight, let error = tree.completionError {
+                Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
+            }
+            if tree.run.type == .multiside && tree.sides.count > 1 {
+                Button("Tinjau saran tautan", systemImage: "link.badge.plus") { showSuggestions = true }
+                Toggle("Geser ke kanan untuk foto berikutnya", isOn: Binding(
+                    get: { reverseSwipe ?? true }, set: { reverseSwipe = $0 }))
+            }
+            exitActions(tree)
+        }
+        .buttonStyle(.bordered)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func ripenessBar(_ tree: TreeDocument) -> some View {
+        let current = selected.flatMap { tree.annotation($0)?.ripeness }
+        return HStack(spacing: 8) {
+            ForEach(Ripeness.allCases.filter { $0 != .unassigned }) { value in
+                Button {
+                    guard let selected else { return }
+                    persist { tree in
+                        let members = tree.clusters.first { $0.contains(selected) } ?? [selected]
+                        for member in members { tree.setRipeness(member, ripeness: value) }
+                    }
+                } label: {
+                    Text(value.label).font(.headline).frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(ripenessColor(value))
+                .overlay {
+                    if current == value { RoundedRectangle(cornerRadius: 8).stroke(.primary, lineWidth: 3) }
+                }
+                .disabled(selected == nil)
+                .accessibilityAddTraits(current == value ? .isSelected : [])
+            }
+        }
     }
 
     private func selectionActions(_ tree: TreeDocument, selected: BoxRef, box: Annotation) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            let number = tree.clusters.firstIndex { $0.contains(selected) }.map { $0 + 1 } ?? 0
-            Text("Tandan \(number)").font(.headline)
+            Text("Tandan \(number(of: selected, in: tree))").font(.headline)
             if tree.run.type == .bunchWeight {
                 if let weight = box.measurements.weightKg {
                     Text("\(weight.formatted()) kg")
                 }
                 Button("Ukuran tandan", systemImage: "scalemass") { showMeasurements = true }
                     .buttonStyle(.borderedProminent)
-            } else {
-                Picker("Kelas kematangan", selection: Binding(
-                    get: { box.ripeness },
-                    set: { value in persist { $0.setRipeness(selected, ripeness: value) } }
-                )) {
-                    ForEach(Ripeness.allCases) { value in
-                        Text(value == .unassigned ? "Belum diberi kelas" : value.label).tag(value)
-                    }
-                }
-                .pickerStyle(.menu)
             }
-            if let pendingLink {
-                Button("Konfirmasi tautan", systemImage: "link") { connect(source: pendingLink, target: selected) }
-                    .disabled(!tree.canLink(pendingLink, selected))
-            } else if tree.sides.count > 1 {
-                Button("Tautkan ke foto lain", systemImage: "link") {
-                    pendingLink = selected
-                    tool = .select
-                }
+            if tree.sides.count > 1 {
+                Button("Tautkan ke foto lain", systemImage: "link") { armLink(from: selected, in: tree) }
                 let suggestions = tree.suggestedLinks(from: selected, clockwise: clockwise)
                 if !suggestions.isEmpty {
                     Menu("Saran tautan", systemImage: "link.badge.plus") {
                         ForEach(suggestions, id: \.self) { candidate in
-                            Button("Foto \(candidate.side + 1) · Tandan \(numberOf(candidate, tree: tree))") {
-                                pendingLink = selected
-                                self.selected = candidate
-                                side = candidate.side
-                                tool = .select
+                            Button("Foto \(candidate.side + 1) · Tandan \(number(of: candidate, in: tree))") {
+                                connect(source: selected, target: candidate)
                             }
                         }
                     }
@@ -200,196 +362,606 @@ struct AnnotationEditor: View {
             ForEach(tree.links.filter { $0.a == selected || $0.b == selected }) { link in
                 let other = link.a == selected ? link.b : link.a
                 Button("Lepas tautan dari foto \(other.side + 1)", systemImage: "link.badge.plus") {
-                    persist { $0.unlink(link.id) }
+                    persistWithStatus { $0.unlink(link.id); return "Tautan dilepas." }
                 }
             }
             Button("Hapus kotak", systemImage: "trash", role: .destructive) {
                 persist { $0.deleteBox(selected); self.selected = nil }
             }
         }
-        .buttonStyle(.bordered)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func numberOf(_ ref: BoxRef, tree: TreeDocument) -> Int {
-        tree.clusters.firstIndex { $0.contains(ref) }.map { $0 + 1 } ?? 0
-    }
-
-    private func connect(source: BoxRef, target: BoxRef) {
-        persistWithStatus { tree in
-            let replaced = tree.link(source, target)
-            pendingLink = nil
-            if replaced { return "Tersimpan. Ukuran tandan mengikuti kotak sumber." }
-            return nil
+    @ViewBuilder
+    private func exitActions(_ tree: TreeDocument) -> some View {
+        Divider()
+        if tree.run.type == .bunchWeight {
+            Button("Simpan draf & keluar", systemImage: "tray.and.arrow.down") { dismiss() }
+            Button(onNext == nil ? "Selesaikan sampel" : "Simpan & sampel berikutnya", systemImage: "checkmark.circle") {
+                finish(next: onNext != nil)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(tree.completionError != nil)
+        } else {
+            Button("Simpan & keluar", systemImage: "checkmark.circle") { finish(next: false) }
+                .buttonStyle(.borderedProminent)
+            if onNext != nil {
+                Button("Pohon berikutnya", systemImage: "arrow.right.circle") { finish(next: true) }
+            }
         }
     }
 
-    private func persist(markComplete: Bool = false, _ edit: (inout TreeDocument) -> Void) {
-        persistWithStatus(markComplete: markComplete) { tree in
+    // MARK: Actions
+
+    private func setMode(_ value: EditorMode) {
+        mode = value
+        drawing = false
+    }
+
+    private func show(side value: Int, animated: Bool) {
+        guard let document, document.sides.indices.contains(value) else { return }
+        side = value
+        selected = nil
+        drawing = false
+        if pagerSide != value {
+            if animated { withAnimation(.snappy) { pagerSide = value } } else { pagerSide = value }
+        }
+    }
+
+    private func tap(box: String?, side tapped: Int) {
+        guard tapped == side else { return }
+        let ref = box.map { BoxRef(side: tapped, box: $0) }
+        if let source = pendingLink, let ref {
+            if ref.side != source.side {
+                connect(source: source, target: ref)
+                return
+            }
+            pendingLink = nil
+        }
+        selected = ref
+    }
+
+    private func armLink(from source: BoxRef, in tree: TreeDocument) {
+        pendingLink = source
+        drawing = false
+        if tree.sides.count == 2 { show(side: 1 - source.side, animated: true) }
+    }
+
+    private func connect(source: BoxRef, target: BoxRef) {
+        guard let document, document.canLink(source, target) else {
+            status = "Pilih kotak pada foto yang bersebelahan dengan Foto \(source.side + 1)."
+            return
+        }
+        pendingLink = nil
+        if side != target.side { show(side: target.side, animated: true) }
+        selected = target
+        persistWithStatus { tree in
+            tree.link(source, target) ? "Tertaut. Ukuran dari foto lain menggantikan nilai pada tandan ini." : "Tautan tersimpan."
+        }
+    }
+
+    private func finish(next: Bool) {
+        persist(markComplete: true, then: {
+            dismiss()
+            if next { onNext?() }
+        }) { _ in }
+    }
+
+    private func zoom(by factor: CGFloat) {
+        var viewport = viewports[side] ?? Viewport()
+        let zoom = min(Viewport.maxZoom, max(1, viewport.zoom * factor))
+        let ratio = zoom / viewport.zoom
+        viewport.offset = CGSize(width: viewport.offset.width * ratio, height: viewport.offset.height * ratio)
+        viewport.zoom = zoom
+        viewports[side] = viewport
+    }
+
+    private func detect() {
+        guard let tree = document else { return }
+        let target = side
+        let info = tree.sides[target]
+        detecting = true
+        Task {
+            defer { detecting = false }
+            do {
+                let url = await store.photoURL(treeID: id, side: target)
+                let jpeg = try Data(contentsOf: url)
+                let found = try await Detector.shared.detect(CapturedPhoto(jpeg: jpeg, width: info.width, height: info.height))
+                guard let latest = document else { return }
+                let existing = latest.sides[target].annotations.map(\.rect)
+                let fresh = found.filter { candidate in !existing.contains { $0.iou(candidate.rect) > 0.5 } }
+                guard !fresh.isEmpty else {
+                    status = "Deteksi tidak menemukan tandan baru pada Foto \(target + 1)."
+                    return
+                }
+                persistWithStatus { tree in
+                    for box in fresh { tree.addBox(side: target, rect: box.rect) }
+                    return "\(fresh.count) kotak baru dari deteksi pada Foto \(target + 1)."
+                }
+            } catch {
+                self.error = error.localizedDescription + " Anotasi manual tetap dapat dilakukan."
+            }
+        }
+    }
+
+    private func persist(markComplete: Bool = false, then: (() -> Void)? = nil, _ edit: (inout TreeDocument) -> Void) {
+        persistWithStatus(markComplete: markComplete, then: then) { tree in
             edit(&tree)
             return nil
         }
     }
 
-    private func persistWithStatus(markComplete: Bool = false, _ edit: (inout TreeDocument) -> String?) {
+    private func persistWithStatus(markComplete: Bool = false, then: (() -> Void)? = nil,
+                                   _ edit: (inout TreeDocument) -> String?) {
         guard !saving, var updated = document else { return }
         let message = edit(&updated)
+        // Show the edit at once; the saved revision replaces it, and a failed save reloads the stored one.
+        document = updated
         saving = true
         Task {
             defer { saving = false }
             do {
                 document = try await store.save(updated, markComplete: markComplete)
                 status = message ?? (markComplete ? "Sampel selesai dan tersimpan." : "Perubahan tersimpan.")
+                pulse()
+                then?()
             } catch {
                 self.error = error.localizedDescription
+                if let stored = try? await store.tree(id: id) { document = stored }
             }
+        }
+    }
+
+    private func pulse() {
+        withAnimation { savedPulse = true }
+        Task {
+            try? await Task.sleep(for: .milliseconds(1300))
+            withAnimation { savedPulse = false }
         }
     }
 
     private func load() async {
         do {
             let tree = try await store.tree(id: id)
-            var decoded: [Int: UIImage] = [:]
-            for side in tree.sides {
-                let url = await store.photoURL(treeID: id, side: side.id)
-                decoded[side.id] = UIImage(contentsOfFile: url.path)
+            if images.isEmpty {
+                var decoded: [Int: UIImage] = [:]
+                for side in tree.sides {
+                    let url = await store.photoURL(treeID: id, side: side.id)
+                    decoded[side.id] = displayImage(url)
+                }
+                images = decoded
             }
-            images = decoded
             document = tree
+            if pagerSide == nil { pagerSide = side }
         } catch {
             self.error = error.localizedDescription
         }
     }
-}
 
-private enum CanvasTool: String, CaseIterable, Identifiable {
-    case select, draw, move, resize
-    var id: Self { self }
-    var title: String {
-        switch self {
-        case .select: "Pilih kotak"
-        case .draw: "Gambar kotak"
-        case .move: "Geser kotak"
-        case .resize: "Ubah ukuran kotak"
-        }
+    // MARK: Helpers
+
+    private func labels(_ tree: TreeDocument, side: Int) -> [String: Int] {
+        Dictionary(uniqueKeysWithValues: tree.clusters.enumerated().flatMap { index, cluster in
+            cluster.filter { $0.side == side }.map { ($0.box, index + 1) }
+        })
+    }
+
+    private func number(of ref: BoxRef, in tree: TreeDocument) -> Int {
+        tree.clusters.firstIndex { $0.contains(ref) }.map { $0 + 1 } ?? 0
     }
 }
 
+/// Decodes a display copy no larger than needed for a 12x zoom on a tablet. Boxes stay in full-resolution pixels.
+private func displayImage(_ url: URL) -> UIImage? {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceThumbnailMaxPixelSize: 4096,
+    ]
+    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+    return UIImage(cgImage: image)
+}
+
+func ripenessColor(_ ripeness: Ripeness) -> Color {
+    switch ripeness {
+    case .unassigned: .white
+    case .b1: .blue
+    case .b2: .red
+    case .b3: .orange
+    case .b4: .purple
+    }
+}
+
+private enum EditorMode: Hashable {
+    case review, edit
+}
+
+struct Viewport: Equatable {
+    static let maxZoom: CGFloat = 12
+    var zoom: CGFloat = 1
+    var offset: CGSize = .zero
+}
+
+/// Maps between view points and image pixels for one viewport.
+private struct ViewTransform {
+    let size: CGSize
+    let scale: CGFloat
+    let origin: CGPoint
+    let displayed: CGSize
+
+    init(size: CGSize, width: Int, height: Int, viewport: Viewport) {
+        self.size = size
+        let fit = max(min(size.width / CGFloat(max(width, 1)), size.height / CGFloat(max(height, 1))), 0.0001)
+        scale = fit * viewport.zoom
+        displayed = CGSize(width: CGFloat(width) * scale, height: CGFloat(height) * scale)
+        func axis(_ view: CGFloat, _ content: CGFloat, _ offset: CGFloat) -> CGFloat {
+            let centered = (view - content) / 2
+            return content > view ? min(0, max(view - content, centered + offset)) : centered
+        }
+        origin = CGPoint(x: axis(size.width, displayed.width, viewport.offset.width),
+                         y: axis(size.height, displayed.height, viewport.offset.height))
+    }
+
+    /// The offset this transform actually shows, after clamping.
+    var offset: CGSize {
+        CGSize(width: origin.x - (size.width - displayed.width) / 2, height: origin.y - (size.height - displayed.height) / 2)
+    }
+
+    func image(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: (point.x - origin.x) / scale, y: (point.y - origin.y) / scale)
+    }
+
+    func screen(_ box: PixelBox) -> CGRect {
+        CGRect(x: origin.x + CGFloat(box.x1) * scale, y: origin.y + CGFloat(box.y1) * scale,
+               width: CGFloat(box.x2 - box.x1) * scale, height: CGFloat(box.y2 - box.y1) * scale)
+    }
+}
+
+/// Kotlin `AnnotationCanvas`. Pinch zooms around the fingers. In Edit, a drag on a handle of the selected box
+/// resizes it, a drag on a box moves it, and a drag on the photo pans. Review installs only a pan, and only
+/// while zoomed, so a swipe at fit scale reaches the pager.
 private struct AnnotationCanvas: View {
     let image: UIImage
     let side: CaptureSide
     let selected: String?
-    let tool: CanvasTool
+    let linkSource: String?
+    let editing: Bool
+    let drawing: Bool
+    let showBoxes: Bool
     let labels: [String: Int]
     let weighted: Bool
-    let height: CGFloat
-    let onSelect: (String?) -> Void
+    @Binding var viewport: Viewport
+    let onTap: (String?) -> Void
+    let onGrab: (String) -> Void
     let onDraw: (PixelBox) -> Void
     let onChange: (String, PixelBox) -> Void
+    @State private var drag: DragKind?
     @State private var preview: PixelBox?
-    @State private var zoom = false
+    @State private var pinchBase: Viewport?
 
-    var body: some View {
-        VStack(alignment: .leading) {
-            GeometryReader { proxy in
-                let naturalScale = min(proxy.size.width / CGFloat(side.width), proxy.size.height / CGFloat(side.height))
-                let scale = naturalScale * (zoom ? 2 : 1)
-                if zoom {
-                    ScrollView([.horizontal, .vertical]) {
-                        picture(scale: scale)
-                    }
-                    .defaultScrollAnchor(.center)
-                } else {
-                    picture(scale: scale).frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .frame(height: height)
-            Toggle("Perbesar foto", isOn: $zoom).toggleStyle(.button)
-        }
+    private static let handleRadius: CGFloat = 22
+    private static let minimumDraw: CGFloat = 24
+    private static let minimumSide: Float = 5
+
+    private enum Handle { case body, topLeft, topRight, bottomLeft, bottomRight, top, bottom, left, right }
+    private enum DragKind {
+        case draw
+        case edit(id: String, handle: Handle, start: PixelBox)
+        case pan(start: CGSize)
     }
 
-    private func picture(scale: CGFloat) -> some View {
-        let width = CGFloat(side.width) * scale
-        let height = CGFloat(side.height) * scale
-        return Image(uiImage: image).resizable()
-            .frame(width: width, height: height)
-            .overlay {
-                Canvas { context, _ in
-                    for box in side.annotations {
-                        let active = box.id == selected
-                        let position = active && tool != .draw ? preview ?? box.rect : box.rect
-                        let rect = CGRect(x: CGFloat(position.x1) * scale, y: CGFloat(position.y1) * scale,
-                                          width: CGFloat(position.x2 - position.x1) * scale,
-                                          height: CGFloat(position.y2 - position.y1) * scale)
-                        let color = active ? Color.yellow : color(for: box.ripeness)
-                        context.stroke(Path(rect), with: .color(color), lineWidth: active ? 3 : 2)
-                        if let number = labels[box.id] {
-                            let label = weighted || box.ripeness == .unassigned ? "\(number)" : "\(number) · \(box.ripeness.label)"
-                            context.draw(Text(label).font(.caption.bold()).foregroundStyle(.white),
-                                         at: CGPoint(x: rect.minX + 3, y: rect.minY + 2), anchor: .topLeading)
-                        }
-                    }
-                    if tool == .draw, let preview {
-                        let rect = CGRect(x: CGFloat(preview.x1) * scale, y: CGFloat(preview.y1) * scale,
-                                          width: CGFloat(preview.x2 - preview.x1) * scale,
-                                          height: CGFloat(preview.y2 - preview.y1) * scale)
-                        context.stroke(Path(rect), with: .color(.yellow), lineWidth: 3)
-                    }
+    var body: some View {
+        GeometryReader { proxy in
+            let transform = ViewTransform(size: proxy.size, width: side.width, height: side.height, viewport: viewport)
+            ZStack(alignment: .topLeading) {
+                Image(uiImage: image)
+                    .resizable()
+                    .frame(width: transform.displayed.width, height: transform.displayed.height)
+                    .offset(x: transform.origin.x, y: transform.origin.y)
+                Canvas { context, _ in render(context, transform) }
+                    .allowsHitTesting(false)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            .clipped()
+            .contentShape(.rect)
+            .gesture(SpatialTapGesture().onEnded { value in tap(value.location, transform) }, including: drawing ? .subviews : .all)
+            .simultaneousGesture(magnify(transform))
+            .gesture(dragGesture(transform), including: editing || viewport.zoom > 1.001 ? .all : .subviews)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Foto dengan kotak anotasi")
+        .accessibilityValue("\(side.annotations.count) kotak, perbesaran \(String(format: "%.1f", viewport.zoom))x")
+    }
+
+    // MARK: Gestures
+
+    private func tap(_ point: CGPoint, _ transform: ViewTransform) {
+        let location = transform.image(point)
+        let tolerance = 8 / transform.scale
+        let hits = side.annotations.filter {
+            location.x >= CGFloat($0.rect.x1) - tolerance && location.x <= CGFloat($0.rect.x2) + tolerance
+                && location.y >= CGFloat($0.rect.y1) - tolerance && location.y <= CGFloat($0.rect.y2) + tolerance
+        }
+        onTap(hits.min { area($0.rect) < area($1.rect) }?.id)
+    }
+
+    private func magnify(_ transform: ViewTransform) -> some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                if pinchBase == nil {
+                    pinchBase = viewport
+                    drag = nil
+                    preview = nil
+                }
+                guard let base = pinchBase else { return }
+                let zoom = min(Viewport.maxZoom, max(1, base.zoom * value.magnification))
+                let before = ViewTransform(size: transform.size, width: side.width, height: side.height, viewport: base)
+                let anchor = value.startLocation
+                let pixel = before.image(anchor)
+                let centered = ViewTransform(size: transform.size, width: side.width, height: side.height,
+                                             viewport: Viewport(zoom: zoom))
+                let origin = CGPoint(x: anchor.x - pixel.x * centered.scale, y: anchor.y - pixel.y * centered.scale)
+                viewport = Viewport(zoom: zoom, offset: CGSize(width: origin.x - centered.origin.x,
+                                                               height: origin.y - centered.origin.y))
+            }
+            .onEnded { _ in
+                pinchBase = nil
+                settle(transform.size)
+            }
+    }
+
+    private func dragGesture(_ transform: ViewTransform) -> some Gesture {
+        DragGesture(minimumDistance: 6)
+            .onChanged { value in
+                guard pinchBase == nil else { return }
+                if drag == nil { drag = begin(at: value.startLocation, transform) }
+                switch drag {
+                case .draw:
+                    let start = transform.image(value.startLocation)
+                    let end = transform.image(value.location)
+                    preview = clamped(PixelBox(x1: Float(min(start.x, end.x)), y1: Float(min(start.y, end.y)),
+                                               x2: Float(max(start.x, end.x)), y2: Float(max(start.y, end.y))))
+                case let .edit(_, handle, start):
+                    preview = adjust(start, handle: handle, dx: Float(value.translation.width / transform.scale),
+                                     dy: Float(value.translation.height / transform.scale))
+                case let .pan(start):
+                    viewport.offset = CGSize(width: start.width + value.translation.width,
+                                             height: start.height + value.translation.height)
+                case nil:
+                    break
                 }
             }
-            .contentShape(.rect)
-            .onTapGesture { point in
-                guard tool == .select else { return }
-                let x = Float(point.x / scale)
-                let y = Float(point.y / scale)
-                let boxes = side.annotations.filter { x >= $0.rect.x1 && x <= $0.rect.x2 && y >= $0.rect.y1 && y <= $0.rect.y2 }
-                onSelect(boxes.min { area($0.rect) < area($1.rect) }?.id)
+            .onEnded { value in
+                defer {
+                    drag = nil
+                    preview = nil
+                }
+                switch drag {
+                case .draw:
+                    if abs(value.translation.width) >= Self.minimumDraw, abs(value.translation.height) >= Self.minimumDraw,
+                       let preview { onDraw(preview) }
+                case let .edit(id, _, start):
+                    if let preview, preview != start { onChange(id, preview) }
+                case .pan:
+                    settle(transform.size)
+                case nil:
+                    break
+                }
             }
-            .gesture(DragGesture(minimumDistance: 5)
-                .onChanged { gesture in preview = drag(gesture, scale: scale) }
-                .onEnded { gesture in
-                    defer { preview = nil }
-                    guard let rect = drag(gesture, scale: scale) else { return }
-                    if tool == .draw { onDraw(rect) }
-                    else if let selected { onChange(selected, rect) }
-                }, including: tool == .select ? .none : .all)
-            .accessibilityLabel("Foto dengan kotak anotasi")
-            .accessibilityIdentifier("annotation-photo")
+    }
+
+    private func begin(at point: CGPoint, _ transform: ViewTransform) -> DragKind {
+        guard editing else { return .pan(start: viewport.offset) }
+        if drawing { return .draw }
+        if let selected, let box = side.annotations.first(where: { $0.id == selected }),
+           let handle = handle(of: box.rect, at: point, transform) {
+            return .edit(id: box.id, handle: handle, start: box.rect)
+        }
+        let location = transform.image(point)
+        let hits = side.annotations.filter {
+            location.x >= CGFloat($0.rect.x1) && location.x <= CGFloat($0.rect.x2)
+                && location.y >= CGFloat($0.rect.y1) && location.y <= CGFloat($0.rect.y2)
+        }
+        if let box = hits.min(by: { area($0.rect) < area($1.rect) }) {
+            onGrab(box.id)
+            return .edit(id: box.id, handle: .body, start: box.rect)
+        }
+        return .pan(start: viewport.offset)
+    }
+
+    /// Handle hit areas are measured in view points, so they stay finger-sized at every zoom.
+    private func handle(of box: PixelBox, at point: CGPoint, _ transform: ViewTransform) -> Handle? {
+        let rect = transform.screen(box)
+        let radius = min(Self.handleRadius, max(8, min(rect.width, rect.height) / 4))
+        let nearLeft = abs(point.x - rect.minX) < radius
+        let nearRight = abs(point.x - rect.maxX) < radius
+        let nearTop = abs(point.y - rect.minY) < radius
+        let nearBottom = abs(point.y - rect.maxY) < radius
+        let withinX = point.x >= rect.minX && point.x <= rect.maxX
+        let withinY = point.y >= rect.minY && point.y <= rect.maxY
+        switch (nearLeft, nearRight, nearTop, nearBottom) {
+        case (true, _, true, _): return .topLeft
+        case (_, true, true, _): return .topRight
+        case (true, _, _, true): return .bottomLeft
+        case (_, true, _, true): return .bottomRight
+        default: break
+        }
+        if nearTop && withinX { return .top }
+        if nearBottom && withinX { return .bottom }
+        if nearLeft && withinY { return .left }
+        if nearRight && withinY { return .right }
+        return withinX && withinY ? .body : nil
+    }
+
+    private func adjust(_ box: PixelBox, handle: Handle, dx: Float, dy: Float) -> PixelBox {
+        let width = Float(side.width)
+        let height = Float(side.height)
+        let minimum = Self.minimumSide
+        func clamp(_ value: Float, _ low: Float, _ high: Float) -> Float { min(max(value, low), high) }
+        var (x1, y1, x2, y2) = (box.x1, box.y1, box.x2, box.y2)
+        switch handle {
+        case .body:
+            let dx = clamp(dx, -box.x1, width - box.x2)
+            let dy = clamp(dy, -box.y1, height - box.y2)
+            return PixelBox(x1: box.x1 + dx, y1: box.y1 + dy, x2: box.x2 + dx, y2: box.y2 + dy)
+        case .topLeft, .left, .bottomLeft:
+            x1 = clamp(box.x1 + dx, 0, box.x2 - minimum)
+        case .topRight, .right, .bottomRight:
+            x2 = clamp(box.x2 + dx, box.x1 + minimum, width)
+        case .top, .bottom:
+            break
+        }
+        switch handle {
+        case .topLeft, .top, .topRight:
+            y1 = clamp(box.y1 + dy, 0, box.y2 - minimum)
+        case .bottomLeft, .bottom, .bottomRight:
+            y2 = clamp(box.y2 + dy, box.y1 + minimum, height)
+        default:
+            break
+        }
+        return PixelBox(x1: x1, y1: y1, x2: x2, y2: y2)
+    }
+
+    private func clamped(_ box: PixelBox) -> PixelBox {
+        let width = Float(side.width)
+        let height = Float(side.height)
+        return PixelBox(x1: min(max(box.x1, 0), width), y1: min(max(box.y1, 0), height),
+                        x2: min(max(box.x2, 0), width), y2: min(max(box.y2, 0), height))
+    }
+
+    private func settle(_ size: CGSize) {
+        let shown = ViewTransform(size: size, width: side.width, height: side.height, viewport: viewport)
+        viewport = viewport.zoom <= 1.001 ? Viewport() : Viewport(zoom: viewport.zoom, offset: shown.offset)
     }
 
     private func area(_ box: PixelBox) -> Float { (box.x2 - box.x1) * (box.y2 - box.y1) }
 
-    private func drag(_ gesture: DragGesture.Value, scale: CGFloat) -> PixelBox? {
-        let x = Float(gesture.location.x / scale)
-        let y = Float(gesture.location.y / scale)
-        if tool == .draw {
-            let startX = Float(gesture.startLocation.x / scale)
-            let startY = Float(gesture.startLocation.y / scale)
-            return PixelBox(x1: min(x, startX), y1: min(y, startY), x2: max(x, startX), y2: max(y, startY))
-        }
-        guard tool != .select, let box = side.annotations.first(where: { $0.id == selected })?.rect else { return nil }
-        let dx = Float(gesture.translation.width / scale)
-        let dy = Float(gesture.translation.height / scale)
-        if tool == .move {
-            let dx = min(max(dx, -box.x1), Float(side.width) - box.x2)
-            let dy = min(max(dy, -box.y1), Float(side.height) - box.y2)
-            return PixelBox(x1: box.x1 + dx, y1: box.y1 + dy, x2: box.x2 + dx, y2: box.y2 + dy)
-        }
-        return PixelBox(x1: box.x1, y1: box.y1, x2: max(box.x1 + 1, box.x2 + dx), y2: max(box.y1 + 1, box.y2 + dy))
-    }
+    // MARK: Drawing
 
-    private func color(for ripeness: Ripeness) -> Color {
-        switch ripeness {
-        case .unassigned: .white
-        case .b1: .blue
-        case .b2: .red
-        case .b3: .orange
-        case .b4: .purple
+    private func render(_ context: GraphicsContext, _ transform: ViewTransform) {
+        if showBoxes {
+            for box in side.annotations {
+                let active = box.id == selected
+                var position = box.rect
+                if case let .edit(id, _, _) = drag, id == box.id, let preview { position = preview }
+                let rect = transform.screen(position)
+                let color: Color = active ? .yellow : (weighted ? .green : ripenessColor(box.ripeness))
+                if box.id == linkSource {
+                    context.stroke(Path(rect.insetBy(dx: -4, dy: -4)), with: .color(.yellow),
+                                   style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                }
+                context.stroke(Path(rect), with: .color(color), lineWidth: active ? 3 : 2)
+                if let number = labels[box.id] {
+                    let label = weighted || box.ripeness == .unassigned ? "\(number)" : "\(number) · \(box.ripeness.label)"
+                    let text = context.resolve(Text(label).font(.caption.bold()).foregroundStyle(.white))
+                    let measured = text.measure(in: CGSize(width: 200, height: 40))
+                    let badge = CGRect(x: rect.minX + 3, y: rect.minY + 3, width: measured.width + 6, height: measured.height + 2)
+                    context.fill(Path(roundedRect: badge, cornerRadius: 3), with: .color(.black.opacity(0.6)))
+                    context.draw(text, at: CGPoint(x: badge.minX + 3, y: badge.minY + 1), anchor: .topLeading)
+                }
+                if active && editing && !drawing {
+                    for point in [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                                  CGPoint(x: rect.minX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.maxY),
+                                  CGPoint(x: rect.midX, y: rect.minY), CGPoint(x: rect.midX, y: rect.maxY),
+                                  CGPoint(x: rect.minX, y: rect.midY), CGPoint(x: rect.maxX, y: rect.midY)] {
+                        let knob = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
+                        context.fill(Path(knob), with: .color(.yellow))
+                        context.stroke(Path(knob), with: .color(.black), lineWidth: 1)
+                    }
+                }
+            }
+        }
+        if case .draw = drag, let preview {
+            context.stroke(Path(transform.screen(preview)), with: .color(.yellow), style: StrokeStyle(lineWidth: 3, dash: [8, 4]))
         }
     }
 }
 
+/// Kotlin `DeduplicationScreen` suggestions: seam matches for every adjacent pair, accepted one by one or together.
+private struct LinkSuggestionSheet: View {
+    let document: TreeDocument
+    @Binding var clockwise: Bool
+    let onAccept: ([(BoxRef, BoxRef)]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var rejected: Set<String> = []
+
+    private struct Pair: Identifiable {
+        let a: BoxRef
+        let b: BoxRef
+        var id: String { "\(a.side):\(a.box)-\(b.side):\(b.box)" }
+    }
+
+    private var pairs: [Pair] {
+        var seen = Set<String>()
+        var result: [Pair] = []
+        for side in document.sides {
+            for box in side.annotations {
+                let source = BoxRef(side: side.id, box: box.id)
+                for target in document.suggestedLinks(from: source, clockwise: clockwise) {
+                    let (a, b) = source.side < target.side ? (source, target) : (target, source)
+                    let pair = Pair(a: a, b: b)
+                    if seen.insert(pair.id).inserted && !rejected.contains(pair.id) { result.append(pair) }
+                }
+            }
+        }
+        return result.sorted { ($0.a.side, $0.b.side) < ($1.a.side, $1.b.side) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Toggle("Arah tangkap searah jarum jam", isOn: $clockwise)
+                }
+                Section("Saran (\(pairs.count))") {
+                    if pairs.isEmpty {
+                        Text("Tidak ada saran tautan untuk pasangan foto ini.").foregroundStyle(.secondary)
+                    }
+                    ForEach(pairs) { pair in
+                        HStack {
+                            Text("Foto \(pair.a.side + 1) · Tandan \(number(pair.a))  ↔  Foto \(pair.b.side + 1) · Tandan \(number(pair.b))")
+                            Spacer()
+                            Button("Tolak", role: .destructive) { rejected.insert(pair.id) }
+                                .buttonStyle(.borderless)
+                            Button("Terima") {
+                                onAccept([(pair.a, pair.b)])
+                                dismiss()
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
+                let links = document.links
+                if !links.isEmpty {
+                    Section("Tautan terkonfirmasi (\(links.count))") {
+                        ForEach(links) { link in
+                            Text("Foto \(link.a.side + 1) · Tandan \(number(link.a))  ↔  Foto \(link.b.side + 1) · Tandan \(number(link.b))")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Saran tautan")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Tutup") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Terima semua (\(pairs.count))") {
+                        onAccept(pairs.map { ($0.a, $0.b) })
+                        dismiss()
+                    }
+                    .disabled(pairs.isEmpty)
+                }
+            }
+        }
+    }
+
+    private func number(_ ref: BoxRef) -> Int {
+        document.clusters.firstIndex { $0.contains(ref) }.map { $0 + 1 } ?? 0
+    }
+}
+
 private struct MeasurementForm: View {
+    let number: Int
     let value: Measurements
     let onSave: (Measurements) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -403,7 +975,7 @@ private struct MeasurementForm: View {
     var body: some View {
         NavigationStack {
             form
-            .navigationTitle("Ukuran tandan")
+            .navigationTitle("Ukuran tandan \(number)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Batal") { dismiss() } }
