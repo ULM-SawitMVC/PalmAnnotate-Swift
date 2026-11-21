@@ -11,7 +11,6 @@ struct CaptureScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var camera = CaptureDevice()
     @State private var gps = CaptureLocation()
     @State private var draft: [CapturedPhoto] = []
@@ -136,7 +135,7 @@ struct CaptureScreen: View {
 
     // MARK: Sections
 
-    private var sideBySide: Bool { verticalSizeClass == .compact || horizontalSizeClass == .regular }
+    private var sideBySide: Bool { verticalSizeClass == .compact }
 
     @ViewBuilder
     private var layout: some View {

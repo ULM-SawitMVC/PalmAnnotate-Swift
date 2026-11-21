@@ -9,7 +9,7 @@ the three v1 modules. The Android reference is commit
 
 See [AGENTS.md](AGENTS.md) for the current milestone status, remaining parity work, and verification evidence.
 
-The app targets iPhone and iPad on iOS 17 and later. `PalmCore` stores each committed sample as an
+The app targets iPhone on iOS 17 and later, with iPhone 11 as the reference device. `PalmCore` stores each committed sample as an
 atomically published directory with immutable photos, an optional video, and one editable JSON snapshot.
 An annotation edit atomically replaces that snapshot. ZIP export derives Android artifacts from the saved
 revision, then compresses a staged copy outside the store actor. The draft identity allows the store to
@@ -67,7 +67,7 @@ replays unfinished journals before opening the run index. Each tree has a privat
 coordinates, stable box and link IDs, original detections, and completion state. Output JSON uses rounded
 pixel coordinates and box indices, so it is a derived artifact, alongside labels and the other Android exports.
 Media and app state live alongside the packages in the private store. Share completed ZIP snapshots through
-the iPadOS share sheet, including Save to Files.
+the iOS share sheet, including Save to Files.
 
 Keep one editable record per tree. Generate exports from the same committed revision and rebuild the tree
 index from the committed snapshots at launch. Measure scan time with a field-sized dataset before adding an index cache.
@@ -214,13 +214,13 @@ accepting a validated draft. Measure save latency on device.
   operator presses Stop and the delegate confirms successful finalization. Export the temporary QuickTime file
   to a supported MP4 container with audio, then validate both tracks, stream its SHA-256, and promote it to
   `video/{tree}.mp4` at commit. Discard interrupted inputs. Normalize JPEG orientation before hashing.
-  Validate simultaneous photo capture and movie recording on each supported iPad class.
+  Validate simultaneous photo capture and movie recording on iPhone 11.
   [Apple capture session setup](https://developer.apple.com/documentation/avfoundation/setting-up-a-capture-session),
   [movie output](https://developer.apple.com/documentation/avfoundation/avcapturemoviefileoutput),
   [asset export](https://developer.apple.com/documentation/avfoundation/avassetexportsession).
 - **Location.** `CLLocationManager` -> `GpsProvenance`; freshness re-judged at commit with the same 60 s rule.
 - **Detector.** Use the same `ffb-detector.onnx` and `detector.config.json` through ONNX Runtime, starting with
-  CPU inference. Verify the package links on both iPadOS and the arm64 simulator before pinning its version.
+  CPU inference. Verify the package links on both iOS devices and the arm64 simulator before pinning its version.
   Test letterbox, tensor decoding, confidence filtering, and class-agnostic NMS in `PalmCore/Detect`.
   Detection returns unassigned suggestions for review. Compare the actual results with Android fixtures.
   [Microsoft ONNX Runtime Swift package](https://github.com/microsoft/onnxruntime-swift-package-manager).
@@ -242,18 +242,18 @@ accepting a validated draft. Measure save latency on device.
 
 | # | Unit | Done when |
 |---|---|---|
-| 0 | XcodeGen project and SwiftUI module picker | Build and launch on the iPad simulator |
+| 0 | XcodeGen project and SwiftUI module picker | Build and launch on the iPhone 11 simulator |
 | 1 | PalmCore package, models, logic, codecs | `swift test` passes golden suites 1-2 |
 | 2 | PackageStore, journal, drafts, ZIP | suite 3 green; ZIP entries and checksums validate, and extracted `json/` loads with Baseline-SawitMVC |
 | 3 | Module hub, run list, start-run sheet, photo capture (4/8, bunch weight 1-2), GPS | tree committed on device, reopens |
-| 4 | Carousel + AnnotationCanvas + measurement panel + links + dedup review | Kotlin carousel invariants re-checked on iPad |
+| 4 | Carousel + AnnotationCanvas + measurement panel + links + dedup review | Kotlin carousel invariants re-checked on iPhone 11 |
 | 5 | ONNX detection | suite 4 green |
 | 6 | Multiside video | record/stop/retake rules on device |
 | 7 | Results, CSV/Identity export, Save to Files, full item lifecycle on device | Device acceptance checklist passes per module |
 
 ## Device acceptance
 
-Use an installed build on an iPhone in portrait and landscape and on an iPad in landscape. Include a
+Use an installed build on an iPhone 11 in portrait and landscape. Include a
 device running the oldest supported OS when available. Record the device model, OS, build SHA, orientation,
 module, side count, and pass/fail result. Use test runs so that draft recovery and deletion can be exercised
 without affecting field data.

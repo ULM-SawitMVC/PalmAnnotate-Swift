@@ -75,12 +75,7 @@ final class CollectionParityTests: XCTestCase {
         let toggle = app.switches["ID otomatis"]
         toggle.reveal(scrolling: app)
         XCTAssertEqual(toggle.value as? String, "1")
-        let edge = toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            edge.withOffset(CGVector(dx: -45, dy: 0)).tap()
-        } else {
-            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-        }
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
         let off = NSPredicate(format: "value == '0'")
         XCTAssertEqual(XCTWaiter().wait(for: [expectation(for: off, evaluatedWith: toggle)], timeout: 10), .completed)
         let note = app.staticTexts["Nomor pohon diketik sendiri saat pengambilan."]
