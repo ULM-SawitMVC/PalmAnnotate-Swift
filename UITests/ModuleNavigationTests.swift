@@ -13,8 +13,19 @@ final class ModuleNavigationTests: XCTestCase {
 
     @MainActor
     func testWeightEditorAndExportsInPortrait() {
+        checkWeightEditor(orientation: .portrait)
+    }
+
+    @MainActor
+    func testWeightEditorAndExportsInLandscape() {
+        checkWeightEditor(orientation: .landscapeLeft)
+    }
+
+    @MainActor
+    private func checkWeightEditor(orientation: UIDeviceOrientation) {
         continueAfterFailure = false
-        XCUIDevice.shared.orientation = .portrait
+        XCUIDevice.shared.orientation = orientation
+        defer { XCUIDevice.shared.orientation = .portrait }
         let app = XCUIApplication()
         app.launchArguments += ["--ui-test", "--ui-test-capture"]
         app.launch()
@@ -33,7 +44,7 @@ final class ModuleNavigationTests: XCTestCase {
         XCTAssertTrue(photo.waitForExistence(timeout: 10))
         photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let measurements = app.buttons["Ukuran tandan"]
-        if !measurements.isHittable { app.swipeUp() }
+        for _ in 0..<3 where !measurements.isHittable { app.scrollViews.firstMatch.swipeUp() }
         XCTAssertTrue(measurements.isHittable)
         attachScreenshot(named: "Editor anotasi")
         measurements.tap()
@@ -49,10 +60,11 @@ final class ModuleNavigationTests: XCTestCase {
         XCTAssertTrue(results.waitForExistence(timeout: 5))
         results.tap()
         let export = app.buttons["Siapkan berkas"]
-        if !export.isHittable { app.swipeUp() }
+        for _ in 0..<3 where !export.isHittable { app.swipeUp() }
         XCTAssertTrue(export.isEnabled)
         export.tap()
         XCTAssertTrue(app.buttons["Bagikan CSV"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Bagikan log anotasi"].exists)
         attachScreenshot(named: "Hasil dan ekspor")
     }
 

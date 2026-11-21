@@ -1,6 +1,6 @@
 # PalmAnnotate Swift
 
-PalmAnnotate untuk iPhone dan iPad dengan SwiftUI. Aplikasi menyediakan Multisisi 4/8 foto, Multisisi Video dengan audio, dan Berat Tandan 1/2 foto. Dua modul foto mendukung deteksi ONNX, penyuntingan kotak, dan penautan tandan. Sesi dan draf disimpan lokal. Sampel yang selesai dapat dibagikan sebagai ZIP. Layar Hasil menyediakan CSV dan Identity JSON untuk sampel beranotasi.
+PalmAnnotate untuk iPhone dan iPad dengan SwiftUI. Aplikasi menyediakan Multisisi 4/8 foto, Multisisi Video dengan audio, dan Berat Tandan 1/2 foto. Dua modul foto mendukung deteksi ONNX, penyuntingan kotak, dan penautan tandan. Sesi dan draf disimpan lokal. Sampel yang selesai dapat dibagikan sebagai ZIP. Layar Hasil menyediakan CSV, Identity JSON, dan log anotasi untuk sampel beranotasi.
 
 ## Jalankan di simulator
 

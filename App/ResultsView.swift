@@ -7,6 +7,7 @@ struct ResultsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var csvURL: URL?
     @State private var identityURL: URL?
+    @State private var annotationLogs: [URL] = []
     @State private var error: String?
 
     var body: some View {
@@ -43,6 +44,7 @@ struct ResultsView: View {
                     if let csvURL, let identityURL {
                         ShareLink(item: csvURL) { Label("Bagikan CSV", systemImage: "tablecells") }
                         ShareLink(item: identityURL) { Label("Bagikan Identity JSON", systemImage: "curlybraces") }
+                        ShareLink(items: annotationLogs) { Label("Bagikan log anotasi", systemImage: "list.bullet.rectangle") }
                     }
                     Button("Siapkan berkas", action: prepare)
                         .disabled(!document.isComplete)
@@ -64,6 +66,7 @@ struct ResultsView: View {
                 document = try await store.save(updated)
                 csvURL = nil
                 identityURL = nil
+                annotationLogs = []
             } catch { self.error = error.localizedDescription }
         }
     }
@@ -76,8 +79,14 @@ struct ResultsView: View {
             let identity = folder.appendingPathComponent(document.id + "-identity.json")
             try ExportCodec.csv(document).write(to: csv, options: .atomic)
             try ExportCodec.identity(document).write(to: identity, options: .atomic)
+            let logs = try document.sides.map { side in
+                let url = folder.appendingPathComponent("\(document.id)_\(side.id + 1).json")
+                try ExportCodec.annotLog(document, side: side).write(to: url, options: .atomic)
+                return url
+            }
             csvURL = csv
             identityURL = identity
+            annotationLogs = logs
         } catch { self.error = error.localizedDescription }
     }
 }

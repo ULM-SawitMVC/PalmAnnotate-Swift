@@ -43,6 +43,10 @@ import ZIPFoundation
         #expect(String(decoding: labels, as: UTF8.self) == "0 0.200000 0.300000 0.200000 0.200000")
         let csv = String(decoding: ExportCodec.csv(result), as: UTF8.self)
         #expect(csv.hasSuffix("DAMIMAS_A21B_BW_0001,field,1,2,12.0,2.0,,\"Grade, A\""))
+        let log = try json(ExportCodec.annotLog(result, side: result.sides[0]))
+        let final = try #require(log["final"] as? [[String: Any]])
+        #expect(final.first?["classId"] == nil)
+        #expect(final.first?["bbox_pixel"] as? [Int] == [10, 20, 30, 40])
         let zip = try await reopened.export(runID: run.id, to: directory, appVersion: "test", date: date)
         let archive = try Archive(url: zip, accessMode: .read)
         let output = try data("json/\(result.id).json", archive: archive)
@@ -99,6 +103,35 @@ import ZIPFoundation
         let detections = YoloDetection.decode(rows, shape: [1, 6, 5], letterbox: letterbox, config: config)
         #expect(detections.map(\.id) == ["det0", "det1"])
         #expect(detections[0].rect == PixelBox(x1: 540, y1: 130, x2: 660, y2: 190))
+    }
+
+    @Test func publishedCaptureRecoversAnUnclearedDraft() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = directory.appendingPathComponent("store")
+        let store = try PackageStore(root: root)
+        let run = try await store.createRun(type: .bunchWeight, variety: "DAMIMAS", block: "A21B", operatorName: "",
+                                            sideCount: 1, split: "field", tokenized: false)
+        try await store.saveDraftPhoto(photo, runID: run.id, side: 0)
+        let draft = root.appendingPathComponent("drafts").appendingPathComponent(run.id)
+        let backup = directory.appendingPathComponent("interrupted-draft")
+        try FileManager.default.copyItem(at: draft, to: backup)
+        let first = try await store.commitCapture(runID: run.id, gps: Provenance(status: .unavailable))
+
+        try FileManager.default.moveItem(at: backup, to: draft)
+        let reopened = try PackageStore(root: root)
+        #expect(try await reopened.draftPhotos(runID: run.id).isEmpty)
+        #expect(try await reopened.trees(runID: run.id).map(\.id) == [first.id])
+        let revision = try await reopened.save(first)
+        #expect(revision.revision == first.revision + 1)
+        do {
+            _ = try await reopened.save(first)
+            Issue.record("An outdated revision was accepted")
+        } catch StoreError.staleRevision {
+            #expect(try await reopened.tree(id: first.id) == revision)
+        }
+        try await reopened.deleteTree(id: first.id)
+        #expect(try await reopened.trees(runID: run.id).isEmpty)
     }
 
     @Test func readLegacyCorpus() throws {

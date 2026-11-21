@@ -176,7 +176,7 @@ public enum ExportCodec {
         return try json(result)
     }
 
-    static func annotLog(_ tree: TreeDocument, side: CaptureSide, at date: Date) throws -> Data {
+    public static func annotLog(_ tree: TreeDocument, side: CaptureSide) throws -> Data {
         let weighted = tree.run.type == .bunchWeight
         func boxes(_ items: [Annotation]) -> [[String: Any]] {
             items.map {
@@ -189,7 +189,8 @@ public enum ExportCodec {
             }
         }
         var result: [String: Any] = [
-            "treeName": tree.id, "sideIndex": side.id, "split": tree.run.split, "savedAt": Int64(date.timeIntervalSince1970 * 1000),
+            "treeName": tree.id, "sideIndex": side.id, "split": tree.run.split,
+            "savedAt": Int64(tree.savedAt.timeIntervalSince1970 * 1000),
             "suggestions": boxes(side.suggestions), "final": boxes(side.annotations)
         ]
         if weighted { result["datasetType"] = tree.run.type.rawValue }

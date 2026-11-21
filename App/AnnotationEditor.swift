@@ -4,7 +4,7 @@ import SwiftUI
 struct AnnotationEditor: View {
     let id: String
     let store: PackageStore
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var document: TreeDocument?
     @State private var images: [Int: UIImage] = [:]
     @State private var side = 0
@@ -49,45 +49,75 @@ struct AnnotationEditor: View {
     }
 
     private func editor(_ tree: TreeDocument) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                sidePicker(tree)
-                if let pendingLink {
-                    Label("Pilih kotak dari sisi yang bersebelahan dengan Foto \(pendingLink.side + 1).",
-                          systemImage: "link")
-                    Button("Batalkan tautan") { self.pendingLink = nil }
+        Group {
+            if verticalSizeClass == .compact {
+                HStack(alignment: .top, spacing: 16) {
+                    photoPanel(tree).frame(maxWidth: .infinity)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            editorTools(tree)
+                            editorActions(tree)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxWidth: 360)
                 }
-                Picker("Alat anotasi", selection: $tool) {
-                    ForEach(CanvasTool.allCases) { Text($0.title).tag($0) }
+                .padding(.horizontal)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        editorTools(tree)
+                        photoPanel(tree)
+                        editorActions(tree)
+                    }
+                    .padding()
+                    .frame(maxWidth: 960)
+                    .frame(maxWidth: .infinity)
                 }
-                .pickerStyle(.menu)
-                if tree.run.type == .multiside {
-                    Toggle("Arah tangkap searah jarum jam", isOn: $clockwise)
-                }
-                if let image = images[side], tree.sides.indices.contains(side) {
-                    canvas(tree, image: image)
-                }
-                if let selected, let box = tree.annotation(selected) {
-                    selectionActions(tree, selected: selected, box: box)
-                }
-                if let status {
-                    Text(status).foregroundStyle(.secondary).accessibilityIdentifier("save-status")
-                }
-                if tree.run.type == .bunchWeight, let error = tree.completionError {
-                    Label(error, systemImage: "exclamationmark.circle")
-                        .foregroundStyle(.secondary)
-                }
-                Button("Selesaikan sampel", systemImage: "checkmark.circle") {
-                    persist(markComplete: true) { _ in }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(tree.completionError != nil)
             }
-            .padding()
-            .frame(maxWidth: 960)
-            .frame(maxWidth: .infinity)
         }
         .disabled(saving)
+    }
+
+    @ViewBuilder
+    private func photoPanel(_ tree: TreeDocument) -> some View {
+        if let image = images[side], tree.sides.indices.contains(side) {
+            canvas(tree, image: image)
+        }
+    }
+
+    @ViewBuilder
+    private func editorTools(_ tree: TreeDocument) -> some View {
+        sidePicker(tree)
+        if let pendingLink {
+            Label("Pilih kotak dari sisi yang bersebelahan dengan Foto \(pendingLink.side + 1).", systemImage: "link")
+            Button("Batalkan tautan") { self.pendingLink = nil }
+        }
+        Picker("Alat anotasi", selection: $tool) {
+            ForEach(CanvasTool.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.menu)
+        if tree.run.type == .multiside {
+            Toggle("Arah tangkap searah jarum jam", isOn: $clockwise)
+        }
+    }
+
+    @ViewBuilder
+    private func editorActions(_ tree: TreeDocument) -> some View {
+        if let selected, let box = tree.annotation(selected) {
+            selectionActions(tree, selected: selected, box: box)
+        }
+        if let status {
+            Text(status).foregroundStyle(.secondary).accessibilityIdentifier("save-status")
+        }
+        if tree.run.type == .bunchWeight, let error = tree.completionError {
+            Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
+        }
+        Button("Selesaikan sampel", systemImage: "checkmark.circle") {
+            persist(markComplete: true) { _ in }
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(tree.completionError != nil)
     }
 
     private func sidePicker(_ tree: TreeDocument) -> some View {
@@ -113,6 +143,7 @@ struct AnnotationEditor: View {
         return AnnotationCanvas(
             image: image, side: tree.sides[side], selected: selected?.box, tool: tool,
             labels: numbers, weighted: tree.run.type == .bunchWeight,
+            height: verticalSizeClass == .compact ? 218 : 275,
             onSelect: { box in selected = box.map { BoxRef(side: side, box: $0) } },
             onDraw: { rect in
                 persist { tree in selected = tree.addBox(side: side, rect: rect) }
@@ -251,6 +282,7 @@ private struct AnnotationCanvas: View {
     let tool: CanvasTool
     let labels: [String: Int]
     let weighted: Bool
+    let height: CGFloat
     let onSelect: (String?) -> Void
     let onDraw: (PixelBox) -> Void
     let onChange: (String, PixelBox) -> Void
@@ -271,7 +303,7 @@ private struct AnnotationCanvas: View {
                     picture(scale: scale).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .frame(height: 275)
+            .frame(height: height)
             Toggle("Perbesar foto", isOn: $zoom).toggleStyle(.button)
         }
     }
