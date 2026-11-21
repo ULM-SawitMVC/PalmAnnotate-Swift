@@ -78,7 +78,7 @@ actor Detector {
     private static func convertedToSRGB(_ scaled: [UInt8], letterbox: Letterbox, from space: CGColorSpace) -> [UInt8]? {
         guard scaled.count == letterbox.resizedWidth * letterbox.resizedHeight * 3 else { return nil }
         var padded = Data(count: scaled.count / 3 * 4)
-        padded.withUnsafeMutableBytes { storage in
+        padded.withUnsafeMutableBytes { (storage: UnsafeMutableRawBufferPointer) in
             for index in 0..<scaled.count / 3 {
                 for channel in 0..<3 { storage[4 * index + channel] = scaled[3 * index + channel] }
                 storage[4 * index + 3] = 255
