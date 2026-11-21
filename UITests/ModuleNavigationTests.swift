@@ -45,31 +45,39 @@ final class ModuleNavigationTests: XCTestCase {
         sample.tap()
         let photo = app.descendants(matching: .any)["annotation-photo"].firstMatch
         XCTAssertTrue(photo.waitForExistence(timeout: 10))
-        photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        let measurements = app.buttons["Ukuran tandan"]
-        for _ in 0..<3 where !measurements.isHittable { app.scrollViews.firstMatch.swipeUp() }
-        XCTAssertTrue(measurements.isHittable)
         attachScreenshot(named: "Editor anotasi")
-        measurements.tap()
-
-        let weight = app.textFields["Berat (kg)"]
+        // Selecting the bunch opens Kotlin's inline weight panel; EditorParityTests covers its validation.
+        photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let weight = app.textFields["measurement-weight"]
         XCTAssertTrue(weight.waitForExistence(timeout: 5))
         weight.tap()
         weight.typeText("12")
-        XCTAssertTrue(app.buttons["Terapkan"].isHittable)
-        XCTAssertTrue(app.textFields["Lingkar (cm, opsional)"].isHittable)
+        let apply = app.buttons["measurement-apply"]
+        XCTAssertTrue(apply.isHittable)
         attachScreenshot(named: "Ukuran tandan dengan papan ketik")
-        app.buttons["Terapkan"].tap()
+        apply.tap()
         let results = app.buttons["Hasil"]
         XCTAssertTrue(results.waitForExistence(timeout: 5))
         results.tap()
+        XCTAssertTrue(app.navigationBars["Hasil"].waitForExistence(timeout: 5))
         let export = app.buttons["Siapkan berkas"]
-        for _ in 0..<3 where !export.isHittable { app.swipeUp() }
+        for _ in 0..<6 where !export.exists || !export.isHittable { app.collectionViews["results-list"].swipeUp() }
         XCTAssertTrue(export.isEnabled)
         export.tap()
         XCTAssertTrue(app.buttons["Bagikan CSV"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Bagikan log anotasi"].exists)
         attachScreenshot(named: "Hasil dan ekspor")
+        for title in ["Bagikan Identity JSON", "Bagikan log anotasi", "Bagikan Output JSON", "Bagikan label YOLO"] {
+            XCTAssertTrue(scrollResults(to: app.buttons[title], in: app), title)
+        }
+    }
+
+    /// A List creates rows only once they are on screen; landscape shows few of the share rows at a time.
+    @MainActor
+    private func scrollResults(to element: XCUIElement, in app: XCUIApplication) -> Bool {
+        let list = app.collectionViews["results-list"]
+        for _ in 0..<4 where !element.exists { list.swipeUp() }
+        for _ in 0..<6 where !element.exists { list.swipeDown() }
+        return element.exists
     }
 
     @MainActor

@@ -51,17 +51,13 @@ final class QualityReviewTests: XCTestCase {
         let photo = app.descendants(matching: .any)["annotation-photo"].firstMatch
         XCTAssertTrue(photo.waitForExistence(timeout: 15), "Saving anyway must commit and open the sample")
         XCTAssertTrue(app.navigationBars["DAMIMAS_QC_0001"].exists)
-        let complete = app.buttons["Selesaikan sampel"]
-        reveal(complete, in: app)
-        complete.tap()
-        let status = app.staticTexts["save-status"]
-        XCTAssertTrue(status.waitForExistence(timeout: 5))
-        XCTAssertEqual(status.label, "Sampel selesai dan tersimpan.")
 
+        // Like Kotlin, a draft sample can be exported from Results.
         app.buttons["Hasil"].tap()
+        XCTAssertTrue(app.navigationBars["Hasil"].waitForExistence(timeout: 5))
+        // The export section follows the per-side counts, and a List creates rows only once they are visible.
         let prepare = app.buttons["Siapkan berkas"]
-        XCTAssertTrue(prepare.waitForExistence(timeout: 5))
-        reveal(prepare, in: app)
+        reveal(prepare, in: app, scrolling: app.collectionViews["results-list"])
         prepare.tap()
         let emptyIssue = app.descendants(matching: .any)["quality-issue-annotation_empty"]
         XCTAssertTrue(emptyIssue.waitForExistence(timeout: 5))
@@ -72,7 +68,7 @@ final class QualityReviewTests: XCTestCase {
         XCTAssertTrue(emptyIssue.waitForNonExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Bagikan CSV"].exists, "Returning to fix must not export")
 
-        reveal(prepare, in: app)
+        reveal(prepare, in: app, scrolling: app.collectionViews["results-list"])
         prepare.tap()
         let exportAnyway = app.buttons["Ekspor tetap"]
         XCTAssertTrue(exportAnyway.waitForExistence(timeout: 5))
@@ -82,8 +78,9 @@ final class QualityReviewTests: XCTestCase {
     }
 
     @MainActor
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
-        for _ in 0..<4 where !element.isHittable { app.swipeUp() }
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication, scrolling container: XCUIElement? = nil) {
+        // Swipe the list itself: in landscape a swipe on the app does not always reach it.
+        for _ in 0..<6 where !element.exists || !element.isHittable { (container ?? app).swipeUp() }
         XCTAssertTrue(element.isHittable, "Cannot reach \(element)")
     }
 
