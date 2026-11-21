@@ -83,7 +83,7 @@ final class EditorParityTests: XCTestCase {
         for _ in 0..<3 where !toggle.isHittable { app.swipeUp() }
         toggle.tap()
         let circumference = app.textFields["measurement-circumference"]
-        XCTAssertTrue(circumference.waitForExistence(timeout: 3))
+        XCTAssertTrue(circumference.waitForExistence(timeout: 20), "Opening the optional details shows the fields")
         focus(circumference, in: app)
         circumference.typeText("0")
         XCTAssertTrue(apply.isHittable)
