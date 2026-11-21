@@ -370,7 +370,7 @@ struct AnnotationEditor: View {
         VStack(alignment: .leading, spacing: 12) {
             if field == nil {
                 HStack {
-                    Picker("Mode", selection: Binding(get: { mode }, set: setMode)) {
+                    Picker("Mode", selection: Binding(get: { mode }, set: { mode = $0; drawing = false })) {
                         Text("Tinjau").tag(EditorMode.review)
                         Text("Edit").tag(EditorMode.edit)
                     }
@@ -513,11 +513,6 @@ struct AnnotationEditor: View {
     }
 
     // MARK: Actions
-
-    private func setMode(_ value: EditorMode) {
-        mode = value
-        drawing = false
-    }
 
     private func show(side value: Int, animated: Bool) {
         guard let document, document.sides.indices.contains(value) else { return }
