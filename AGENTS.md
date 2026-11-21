@@ -24,7 +24,7 @@ Update this table when a milestone gains code or new evidence.
 | M6 · Multisisi Video | Photo and movie capture with audio, passthrough MP4, stop gate, timer, idle timer, retake-all and discard confirmations, interruption handling, playback. | Test audio, concurrent stills, interruptions, playback, and ZIP on a physical device. |
 | M7 · Field acceptance | Per-sample and per-session exports, data-safety hint, build revision in the hub. | Run the [device checklist](DESIGN.md#device-acceptance) per module and record device, OS, build SHA, and results. |
 
-The last simulator verification used Xcode 27.2 and the iPhone 11 profile on iOS 27.2. Reports under `DerivedData/` are local. Physical verification requires connected hardware.
+The last simulator verification, at `bc61268`, used Xcode 27.2 and the iPhone 11 profile on iOS 27.2. All 29 UI tests and 59 PalmCore tests passed, including the 953-file legacy corpus. Reports under `DerivedData/` are local. Physical verification requires connected hardware.
 
 ## Rules for changes
 
