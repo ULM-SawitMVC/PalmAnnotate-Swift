@@ -26,6 +26,8 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
     private var photoContinuation: CheckedContinuation<Data, Error>?
     private var videoStart: CheckedContinuation<Void, Error>?
     private var videoStop: CheckedContinuation<URL, Error>?
+    private var recordingURL: URL?
+    private var recordingInterrupted: (@MainActor @Sendable () -> Void)?
     private var configured = false
 
     func start(withVideo: Bool) async throws {
@@ -80,6 +82,7 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
 
     func stop() {
         queue.async {
+            self.recordingInterrupted = nil
             if self.movies.isRecording { self.movies.stopRecording() }
             if self.session.isRunning { self.session.stopRunning() }
         }
@@ -99,10 +102,10 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
         }
     }
 
-    func startVideo(rotation: CGFloat) async throws {
+    func startVideo(rotation: CGFloat, onInterruption: (@MainActor @Sendable () -> Void)? = nil) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async {
-                guard self.session.isRunning, !self.movies.isRecording, self.videoStart == nil,
+                guard self.session.isRunning, self.recordingURL == nil,
                       let connection = self.movies.connection(with: .video) else {
                     continuation.resume(throwing: CaptureError.video)
                     return
@@ -113,6 +116,8 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
                 }
                 self.videoStart = continuation
                 let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+                self.recordingURL = url
+                self.recordingInterrupted = onInterruption
                 self.movies.startRecording(to: url, recordingDelegate: self)
             }
         }
@@ -167,6 +172,7 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
 
     func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
         queue.async {
+            guard fileURL == self.recordingURL else { return }
             let caller = self.videoStart
             self.videoStart = nil
             caller?.resume()
@@ -176,15 +182,21 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo fileURL: URL,
                     from connections: [AVCaptureConnection], error: Error?) {
         queue.async {
-            self.videoStart?.resume(throwing: error ?? CaptureError.recordingInterrupted)
+            guard fileURL == self.recordingURL else { return }
+            let start = self.videoStart
             self.videoStart = nil
             let caller = self.videoStop
             self.videoStop = nil
+            let interrupted = self.recordingInterrupted
+            self.recordingInterrupted = nil
+            self.recordingURL = nil
+            start?.resume(throwing: error ?? CaptureError.recordingInterrupted)
             if let caller, error == nil {
                 caller.resume(returning: fileURL)
             } else {
                 try? FileManager.default.removeItem(at: fileURL)
                 caller?.resume(throwing: error ?? CaptureError.recordingInterrupted)
+                if start == nil, caller == nil, let interrupted { Task { await interrupted() } }
             }
         }
     }

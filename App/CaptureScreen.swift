@@ -137,7 +137,13 @@ struct CaptureScreen: View {
                 Button("Mulai rekam", systemImage: "record.circle") {
                     work("Memulai rekaman…") {
                         try await clearDraft()
-                        try await camera.startVideo(rotation: rotation)
+                        try await camera.startVideo(rotation: rotation) {
+                            // The system ended the recording (a call, another camera client, or full
+                            // storage). Photos taken during it cannot be saved without their video.
+                            guard recording else { return }
+                            recording = false
+                            error = CaptureError.recordingInterrupted.localizedDescription
+                        }
                         recording = true
                     }
                 }
