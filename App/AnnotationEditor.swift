@@ -629,9 +629,7 @@ struct AnnotationEditor: View {
                 let url = await store.photoURL(treeID: id, side: target)
                 let jpeg = try Data(contentsOf: url)
                 let found = try await Detector.shared.detect(CapturedPhoto(jpeg: jpeg, width: info.width, height: info.height))
-                guard let latest = document, latest.sides.indices.contains(target),
-                      latest.sides[target].sha256 == info.sha256 else { return }
-                var probe = latest
+                guard var probe = document else { return }
                 guard !probe.mergeDetections(side: target, found).isEmpty else {
                     status = "Deteksi tidak menemukan tandan baru pada Foto \(target + 1)."
                     return
