@@ -175,7 +175,8 @@ final class EditorParityTests: XCTestCase {
         let linked = app.descendants(matching: .any)["results-linked-duplicates"]
         for _ in 0..<3 where !linked.exists { app.swipeUp() }
         XCTAssertTrue(linked.exists, "The results count linked duplicates")
-        let b3 = app.staticTexts["B3"]
+        let b3 = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'B3'")).firstMatch
+        for _ in 0..<3 where !b3.exists { app.swipeDown() }
         for _ in 0..<3 where !b3.exists { app.swipeUp() }
         XCTAssertTrue(b3.exists, "The class chosen in the resolution sheet is the one counted")
     }
