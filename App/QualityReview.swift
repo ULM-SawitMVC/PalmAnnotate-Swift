@@ -101,4 +101,20 @@ func seedQualityReviewFixture(_ store: PackageStore) async throws {
         try await store.saveDraftPhoto(normalizedPhoto(image), runID: run.id, side: side)
     }
 }
+
+/// A run without automatic numbering. Sample 3 is committed, and a complete draft waits for its ID.
+func seedManualIDFixture(_ store: PackageStore) async throws {
+    let run = try await store.createRun(type: .multiside, variety: "DAMIMAS", block: "QM", operatorName: "",
+                                        sideCount: 4, split: "field", tokenized: false, autoId: false)
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 480, height: 360)).jpegData(withCompressionQuality: 0.9) { context in
+        UIColor.systemGreen.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 480, height: 360))
+    }
+    for draft in 0..<2 {
+        for side in 0..<4 {
+            try await store.saveDraftPhoto(normalizedPhoto(image), runID: run.id, side: side)
+        }
+        if draft == 0 { _ = try await store.commitCapture(runID: run.id, gps: Provenance(status: .unavailable), treeNumber: 3) }
+    }
+}
 #endif

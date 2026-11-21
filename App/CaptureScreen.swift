@@ -10,6 +10,7 @@ struct CaptureScreen: View {
     let completed: (TreeDocument) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var camera = CaptureDevice()
     @State private var gps = CaptureLocation()
     @State private var draft: [CapturedPhoto] = []
@@ -31,6 +32,12 @@ struct CaptureScreen: View {
     @State private var showRetakeAll = false
     @State private var showStopRecording = false
     @State private var qualityReport: QualityCheck.Report?
+    /// Kotlin's capture "Tree ID" field for a run without automatic numbering. Digits only.
+    @State private var manualID = ""
+    @FocusState private var editingID: Bool
+    /// Detection runs after the photo is in the draft, so the next side can be taken right away.
+    @State private var detections: [Int: Task<Void, Never>] = [:]
+    @State private var detectionNotice: String?
     #if targetEnvironment(simulator)
     @State private var fixture: PhotosPickerItem?
     @State private var showMovieImporter = false
@@ -38,28 +45,18 @@ struct CaptureScreen: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header
-                    if draftInvalid { invalidDraftBanner }
-                    if recording, let recordingStarted { recordingIndicator(since: recordingStarted) }
-                    stage
-                    if !draft.isEmpty { thumbnailStrip }
-                    captureActions
-                    if busy {
-                        ProgressView(busyLabel).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding()
-                .frame(maxWidth: 760)
-                .frame(maxWidth: .infinity)
-            }
+            layout
             .navigationTitle(run.type.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Tutup") { if recording { showStopRecording = true } else { dismiss() } }
                         .disabled(busy && !recording)
+                }
+                // The number pad has no return key.
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Selesai") { editingID = false }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     if (!draft.isEmpty || draftInvalid) && !recording {
@@ -94,6 +91,7 @@ struct CaptureScreen: View {
             .task { await open() }
             .onDisappear {
                 camera.stop()
+                for task in detections.values { task.cancel() }
                 UIApplication.shared.isIdleTimerDisabled = false
             }
             // Kotlin keeps the screen on while recording. An auto-lock would end the take.
@@ -141,12 +139,70 @@ struct CaptureScreen: View {
 
     // MARK: Sections
 
+    private var compactHeight: Bool { verticalSizeClass == .compact }
+
+    @ViewBuilder
+    private var layout: some View {
+        if compactHeight {
+            // A phone in landscape: the photo keeps the full height beside a scrolling control column.
+            HStack(alignment: .top, spacing: 16) {
+                stage.frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        status
+                        controls
+                    }
+                    .padding(.vertical)
+                }
+                .frame(width: 320)
+            }
+            .padding(.horizontal)
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    status
+                    stage
+                    controls
+                }
+                .padding()
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        header
+        if !run.autoId { manualIDField }
+        if draftInvalid { invalidDraftBanner }
+        if recording, let recordingStarted { recordingIndicator(since: recordingStarted) }
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        if !draft.isEmpty { thumbnailStrip }
+        captureActions
+        if busy {
+            ProgressView(busyLabel).frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     /// Kotlin shows the locked run and the GPS line above the camera.
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("\(draft.count) / \(run.sideCount) foto").font(.headline)
             Label("\(run.variety) · \(run.block)", systemImage: "lock")
                 .font(.subheadline).foregroundStyle(.secondary)
+            if !detections.isEmpty {
+                Label("Mendeteksi tandan…", systemImage: "sparkle.magnifyingglass")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("detection-pending")
+            } else if let detectionNotice {
+                Label(detectionNotice, systemImage: "exclamationmark.triangle")
+                    .font(.footnote).foregroundStyle(.orange)
+                    .accessibilityIdentifier("detection-notice")
+            }
             TimelineView(.periodic(from: .now, by: 15)) { context in
                 HStack(spacing: 8) {
                     Label(gps.describe(at: context.date), systemImage: gpsSymbol)
@@ -158,6 +214,27 @@ struct CaptureScreen: View {
                     }
                 }
             }
+        }
+    }
+
+    private var manualIDField: some View {
+        HStack {
+            Spacer()
+            Text(run.type == .bunchWeight ? "ID sampel" : "ID pohon")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField(run.type == .bunchWeight ? "ID sampel" : "ID pohon", text: $manualID)
+                .keyboardType(.numberPad)
+                .focused($editingID)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+                .onChange(of: manualID) { _, value in
+                    let digits = value.filter(\.isASCII).filter(\.isNumber)
+                    if digits != value { manualID = digits }
+                }
+                .disabled(busy || recording)
+                .accessibilityLabel(run.type == .bunchWeight ? "ID sampel" : "ID pohon")
+                .accessibilityIdentifier("manual-tree-id")
         }
     }
 
@@ -206,7 +283,7 @@ struct CaptureScreen: View {
             reviewPager(selection: reviewedSide)
         } else if ready {
             CameraPreview(camera: camera).aspectRatio(4 / 3, contentMode: .fit)
-                .frame(maxHeight: 360).clipShape(.rect(cornerRadius: 12))
+                .frame(maxHeight: compactHeight ? .infinity : 360).clipShape(.rect(cornerRadius: 12))
                 .accessibilityLabel("Pratinjau kamera")
         } else if let captureError {
             VStack(alignment: .leading, spacing: 8) {
@@ -234,7 +311,7 @@ struct CaptureScreen: View {
             }
         }
         .tabViewStyle(.page(indexDisplayMode: draft.count > 1 ? .always : .never))
-        .frame(height: 420)
+        .frame(height: compactHeight ? nil : 420)
         .background(.black, in: .rect(cornerRadius: 12))
         .overlay(alignment: .topLeading) {
             Text("Foto \(selection + 1)/\(run.sideCount)")
@@ -359,6 +436,9 @@ struct CaptureScreen: View {
     private func open() async {
         defer { busy = false }
         do {
+            if !run.autoId, manualID.isEmpty, let current = try? await store.run(id: run.id) {
+                manualID = String(current.nextNumber)
+            }
             draft = try await store.draftPhotos(runID: run.id)
             savedVideo = await store.draftVideo(runID: run.id) != nil
             reviewedSide = draft.indices.last
@@ -407,15 +487,7 @@ struct CaptureScreen: View {
     }
 
     private func savePhoto(_ data: Data) async throws {
-        var photo = try normalizedPhoto(data)
-        if !run.type.requiresVideo {
-            do {
-                let boxes = try await Detector.shared.detect(photo)
-                photo = CapturedPhoto(jpeg: photo.jpeg, width: photo.width, height: photo.height, suggestions: boxes)
-            } catch {
-                self.error = error.localizedDescription + " Foto tersimpan dan dapat dianotasi manual."
-            }
-        }
+        let photo = try normalizedPhoto(data)
         let index = replacement ?? draft.count
         try await store.saveDraftPhoto(photo, runID: run.id, side: index)
         if index == draft.count { draft.append(photo) }
@@ -423,6 +495,32 @@ struct CaptureScreen: View {
         render(index)
         replacement = nil
         if !recording { reviewedSide = index }
+        if !run.type.requiresVideo { detect(photo, side: index) }
+    }
+
+    /// Adds detector suggestions to a saved draft side. The store applies them only while that side
+    /// still holds the same JPEG, so a retake during inference keeps the new photo's own result.
+    private func detect(_ photo: CapturedPhoto, side: Int) {
+        detections[side]?.cancel()
+        let runID = run.id
+        let task = Task {
+            do {
+                let boxes = try await Detector.shared.detect(photo)
+                try Task.checkCancellation()
+                if await store.updateDraftSuggestions(runID: runID, side: side, jpeg: photo.jpeg, suggestions: boxes),
+                   draft.indices.contains(side), draft[side].jpeg == photo.jpeg {
+                    draft[side] = CapturedPhoto(jpeg: photo.jpeg, width: photo.width, height: photo.height, suggestions: boxes)
+                }
+            } catch is CancellationError {
+            } catch {
+                detectionNotice = "Deteksi otomatis gagal untuk foto \(side + 1). Foto tersimpan dan dapat dianotasi manual."
+            }
+        }
+        detections[side] = task
+        Task {
+            await task.value
+            if detections[side] == task { detections[side] = nil }
+        }
     }
 
     private func render(_ index: Int) {
@@ -439,8 +537,20 @@ struct CaptureScreen: View {
 
     private func commit() {
         work("Menyimpan sampel…") {
+            // Kotlin `awaitPendingDraftWrites`: the sample is published with every finished detection.
+            if !detections.isEmpty {
+                busyLabel = "Menunggu deteksi…"
+                for task in detections.values { await task.value }
+                busyLabel = "Menyimpan sampel…"
+            }
+            // Kotlin: an empty or unreadable field falls back to the run's next number.
+            var treeNumber: Int?
+            if !run.autoId {
+                let fallback = (try? await store.run(id: run.id))?.nextNumber ?? 1
+                treeNumber = max(1, Int(manualID) ?? fallback)
+            }
             do {
-                let document = try await store.commitCapture(runID: run.id, gps: gps.provenance)
+                let document = try await store.commitCapture(runID: run.id, gps: gps.provenance, treeNumber: treeNumber)
                 completed(document)
                 dismiss()
             } catch {
@@ -450,6 +560,9 @@ struct CaptureScreen: View {
     }
 
     private func clearDraft() async throws {
+        for task in detections.values { task.cancel() }
+        detections = [:]
+        detectionNotice = nil
         try await store.discardDraft(runID: run.id)
         draft = []
         previews = [:]

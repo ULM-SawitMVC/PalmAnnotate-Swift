@@ -53,6 +53,7 @@ private struct PalmAnnotateRoot: View {
                 if arguments.contains("--ui-test-capture") { try await seedCaptureFixture(opened) }
                 if arguments.contains("--ui-test-collections") { try await seedCollectionsFixture(opened) }
                 if arguments.contains("--ui-test-quality") { try await seedQualityReviewFixture(opened) }
+                if arguments.contains("--ui-test-manual-id") { try await seedManualIDFixture(opened) }
                 #endif
                 store = opened
             } catch {
