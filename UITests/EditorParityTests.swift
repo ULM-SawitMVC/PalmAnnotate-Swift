@@ -26,9 +26,7 @@ final class EditorParityTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Draf'")).firstMatch.waitForExistence(timeout: 10),
                       "A weight sample without a weight stays a draft")
 
-        let sample = sampleRow(app)
-        XCTAssertTrue(sample.waitForExistence(timeout: 90))
-        sample.tap()
+        tapSample(app)
         selectWeightBox(app)
         let weight = app.textFields["measurement-weight"]
         XCTAssertTrue(weight.waitForExistence(timeout: 10))
@@ -198,7 +196,10 @@ final class EditorParityTests: XCTestCase {
         app.staticTexts["DAMIMAS · QC"].tap()
         app.buttons.containing(.staticText, identifier: "Tangkap sampel").firstMatch.tap()
         let save = app.buttons["Simpan sampel"]
-        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        XCTAssertTrue(save.waitForExistence(timeout: 90))
+        // The button stays disabled while the capture screen prepares the camera.
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: save)
+        XCTAssertEqual(XCTWaiter().wait(for: [enabled], timeout: 90), .completed)
         reveal(save, in: app)
         save.tap()
         let saveAnyway = app.buttons["Simpan tetap"]
@@ -214,15 +215,22 @@ final class EditorParityTests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'DAMIMAS_QA_BW_0001'")).firstMatch
     }
 
+    /// The session list is lazy and a landscape phone shows few rows, so scroll until the sample is built.
+    @MainActor
+    private func tapSample(_ app: XCUIApplication) {
+        let sample = sampleRow(app)
+        for _ in 0..<6 where !sample.waitForExistence(timeout: 10) { app.swipeUp() }
+        XCTAssertTrue(sample.exists, "The sample row never appeared")
+        sample.tap()
+    }
+
     @MainActor
     private func openWeightEditor(_ app: XCUIApplication) {
         let module = app.staticTexts["Berat Tandan"]
         XCTAssertTrue(module.waitForExistence(timeout: 90))
         module.tap()
         app.staticTexts["DAMIMAS · QA"].tap()
-        let sample = sampleRow(app)
-        XCTAssertTrue(sample.waitForExistence(timeout: 90))
-        sample.tap()
+        tapSample(app)
         XCTAssertTrue(app.descendants(matching: .any)["annotation-photo"].firstMatch.waitForExistence(timeout: 90))
     }
 
