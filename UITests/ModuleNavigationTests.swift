@@ -25,7 +25,6 @@ final class ModuleNavigationTests: XCTestCase {
     private func checkWeightEditor(orientation: UIDeviceOrientation) {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = orientation
-        defer { XCUIDevice.shared.orientation = .portrait }
         let app = XCUIApplication()
         app.launchArguments += ["--ui-test", "--ui-test-capture"]
         app.launch()
