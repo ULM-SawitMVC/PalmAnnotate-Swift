@@ -50,6 +50,7 @@ private struct PalmAnnotateRoot: View {
                 let arguments = ProcessInfo.processInfo.arguments
                 if arguments.contains("--ui-test") {
                     base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                    UIView.setAnimationsEnabled(false)
                 }
                 #endif
                 let opened = try PackageStore(root: base)
