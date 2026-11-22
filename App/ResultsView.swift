@@ -5,11 +5,8 @@ struct ResultsView: View {
     @State var document: TreeDocument
     let store: PackageStore
     @Environment(\.dismiss) private var dismiss
-    @State private var csvURL: URL?
-    @State private var identityURL: URL?
-    @State private var annotationLogs: [URL] = []
-    @State private var outputURL: URL?
-    @State private var labelURLs: [URL] = []
+    @State private var exports: [Int: SampleExport] = [:]
+    @State private var exportRequest: TreeDocument?
     @State private var error: String?
     @State private var qualityReport: QualityCheck.Report?
     @State private var showMismatch = false
@@ -47,16 +44,15 @@ struct ResultsView: View {
                     }
                 }
                 Section("Ekspor sampel") {
-                    if let csvURL, let identityURL {
-                        ShareLink(item: csvURL) { Label("Bagikan CSV", systemImage: "tablecells") }
-                        ShareLink(item: identityURL) { Label("Bagikan Identity JSON", systemImage: "curlybraces") }
-                        ShareLink(items: annotationLogs) { Label("Bagikan log anotasi", systemImage: "list.bullet.rectangle") }
-                        if let outputURL {
-                            ShareLink(item: outputURL) { Label("Bagikan Output JSON", systemImage: "doc.text") }
-                        }
-                        ShareLink(items: labelURLs) { Label("Bagikan label YOLO", systemImage: "square.dashed") }
+                    if let files = exports[document.revision] {
+                        ShareLink(item: files.csv) { Label("Bagikan CSV", systemImage: "tablecells") }
+                        ShareLink(item: files.identity) { Label("Bagikan Identity JSON", systemImage: "curlybraces") }
+                        ShareLink(items: files.logs) { Label("Bagikan log anotasi", systemImage: "list.bullet.rectangle") }
+                        ShareLink(item: files.output) { Label("Bagikan Output JSON", systemImage: "doc.text") }
+                        ShareLink(items: files.labels) { Label("Bagikan label YOLO", systemImage: "square.dashed") }
                     }
                     Button("Siapkan berkas", action: requestExport)
+                        .disabled(exportRequest != nil)
                     if !document.isComplete {
                         Text("Sampel masih draf. Berkas tetap dapat disiapkan, tetapi periksa hasilnya terlebih dahulu.")
                             .foregroundStyle(.secondary)
@@ -75,6 +71,8 @@ struct ResultsView: View {
             }
             .qualityReview($qualityReport, question: "Ekspor tetap?", continueTitle: "Ekspor tetap", onContinue: prepare)
         }
+        .task(id: exportRequest?.revision) { await prepareRequestedExport() }
+        .onDisappear { exportRequest = nil }
     }
 
     private func resolve(_ choices: [String: Ripeness]) {
@@ -83,11 +81,7 @@ struct ResultsView: View {
         Task {
             do {
                 document = try await store.save(updated)
-                csvURL = nil
-                identityURL = nil
-                annotationLogs = []
-                outputURL = nil
-                labelURLs = []
+                exportRequest = nil
             } catch { self.error = error.localizedDescription }
         }
     }
@@ -98,30 +92,71 @@ struct ResultsView: View {
     }
 
     private func prepare() {
+        guard exports[document.revision] == nil else { return }
+        exportRequest = document
+    }
+
+    private func prepareRequestedExport() async {
+        guard let snapshot = exportRequest else { return }
+        defer {
+            if !Task.isCancelled, exportRequest?.revision == snapshot.revision { exportRequest = nil }
+        }
+        let worker = Task.detached(priority: .userInitiated) { try SampleExport.prepare(snapshot) }
         do {
-            let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let csv = folder.appendingPathComponent(document.id + "_result.csv")
-            let identity = folder.appendingPathComponent(document.id + "_identity.json")
-            try ExportCodec.csv(document).write(to: csv, options: .atomic)
-            try ExportCodec.identity(document).write(to: identity, options: .atomic)
-            let logs = try document.sides.map { side in
-                let url = folder.appendingPathComponent("\(document.id)_\(side.id + 1).json")
-                try ExportCodec.annotLog(document, side: side).write(to: url, options: .atomic)
-                return url
+            let files = try await withTaskCancellationHandler {
+                try await worker.value
+            } onCancel: {
+                worker.cancel()
             }
-            let output = folder.appendingPathComponent(document.id + ".json")
-            try ExportCodec.output(document, generatedAt: document.savedAt).write(to: output, options: .atomic)
-            let labels = try document.sides.map { side in
-                let url = folder.appendingPathComponent("\(document.id)_\(side.id + 1).txt")
-                try ExportCodec.labels(side, type: document.run.type).write(to: url, options: .atomic)
-                return url
-            }
-            csvURL = csv
-            identityURL = identity
-            annotationLogs = logs
-            outputURL = output
-            labelURLs = labels
-        } catch { self.error = error.localizedDescription }
+            try Task.checkCancellation()
+            guard document.revision == snapshot.revision else { return }
+            // Keep previous revisions alive until Results closes so shares can finish reading them.
+            exports[snapshot.revision] = files
+        } catch is CancellationError {
+        } catch {
+            if !Task.isCancelled { self.error = error.localizedDescription }
+        }
+    }
+}
+
+private final class SampleExport: Sendable {
+    private let folder: URL
+    let csv: URL
+    let identity: URL
+    let logs: [URL]
+    let output: URL
+    let labels: [URL]
+
+    private init(_ document: TreeDocument) {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        self.folder = folder
+        csv = folder.appendingPathComponent(document.id + "_result.csv")
+        identity = folder.appendingPathComponent(document.id + "_identity.json")
+        output = folder.appendingPathComponent(document.id + ".json")
+        logs = document.sides.map { folder.appendingPathComponent("\(document.id)_\($0.id + 1).json") }
+        labels = document.sides.map { folder.appendingPathComponent("\(document.id)_\($0.id + 1).txt") }
+    }
+
+    static func prepare(_ document: TreeDocument) throws -> SampleExport {
+        try Task.checkCancellation()
+        let files = SampleExport(document)
+        try FileManager.default.createDirectory(at: files.folder, withIntermediateDirectories: true)
+        try ExportCodec.csv(document).write(to: files.csv, options: .atomic)
+        try ExportCodec.identity(document).write(to: files.identity, options: .atomic)
+        try ExportCodec.output(document, generatedAt: document.savedAt).write(to: files.output, options: .atomic)
+        for (index, side) in document.sides.enumerated() {
+            try Task.checkCancellation()
+            try ExportCodec.annotLog(document, side: side).write(to: files.logs[index], options: .atomic)
+            try ExportCodec.labels(side, type: document.run.type).write(to: files.labels[index], options: .atomic)
+        }
+        try Task.checkCancellation()
+        return files
+    }
+
+    deinit {
+        let folder = folder
+        Task.detached(priority: .utility) {
+            try? FileManager.default.removeItem(at: folder)
+        }
     }
 }

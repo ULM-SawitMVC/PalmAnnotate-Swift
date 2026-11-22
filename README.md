@@ -19,3 +19,17 @@ Di Xcode, pilih skema **PalmAnnotate** dan simulator iPhone 11. Gunakan **Run** 
 Jalankan tes penyimpanan, ekspor, dan deteksi dengan `swift test --package-path Packages/PalmCore`. Atur `PALM_LEGACY_CORPUS` ke folder `ground_truth/annotations` dari Baseline-SawitMVC untuk menjalankan pemeriksaan korpus lokal.
 
 [Rancangan dan kontrak ekspor](DESIGN.md) · [Status porting dan panduan agen](AGENTS.md)
+
+## Distribusi App Store
+
+Tautan **Kebijakan Privasi** pada layar utama membuka [kebijakan yang disertakan dalam aplikasi](App/PRIVACY.md). Gunakan URL publik untuk kebijakan yang sama di App Store Connect setelah dokumen tersedia di repositori publik. Periksa juga setelan App Privacy berdasarkan alur distribusi dan penanganan ekspor oleh pengelola aplikasi.
+
+Gunakan [daftar pemeriksaan App Store](docs/APP-STORE.md) untuk menyiapkan arsip, metadata, screenshot, dan bahan App Review.
+
+### Dukungan
+
+Laporkan masalah atau beri masukan melalui [GitHub Issues PalmAnnotate](https://github.com/ULM-SawitMVC/PalmAnnotate-Swift/issues). Sertakan versi aplikasi dari layar utama, model iPhone, versi iOS, modul, dan langkah untuk mengulangi masalah. Gunakan data contoh untuk screenshot atau berkas ekspor agar foto lapangan, nama operator, dan koordinat asli tetap privat.
+
+## Atribusi
+
+This software is based in part on the work of the Independent JPEG Group.

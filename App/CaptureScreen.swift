@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import PhotosUI
 import PalmCore
 import SwiftUI
@@ -25,6 +26,10 @@ struct CaptureScreen: View {
     @State private var ready = false
     @State private var busy = true
     @State private var busyLabel = "Menyiapkan kamera…"
+    @State private var didRequestLocation = false
+    @State private var cameraViewOpen = false
+    @State private var cameraStartPending = false
+    @State private var cameraInterrupted = false
     @State private var error: String?
     @State private var captureError: String?
     @State private var permissionDenied = false
@@ -44,6 +49,11 @@ struct CaptureScreen: View {
     var body: some View {
         NavigationStack {
             layout
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if recording, let recordingStarted {
+                    recordingIndicator(since: recordingStarted)
+                }
+            }
             .navigationTitle(run.type.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -85,9 +95,14 @@ struct CaptureScreen: View {
             .modifier(ErrorAlert(message: $error))
             .qualityReview($qualityReport, question: "Simpan tetap?", continueTitle: "Simpan tetap", onContinue: commit)
             .interactiveDismissDisabled(recording || busy)
-            .task { await open() }
+            .task {
+                cameraViewOpen = true
+                await open()
+            }
+            .task(id: reviewedSide) { await loadReviewedPreview() }
             .onDisappear {
-                camera.stop()
+                cameraViewOpen = false
+                pauseCamera()
                 for task in detections.values { task.cancel() }
                 UIApplication.shared.isIdleTimerDisabled = false
             }
@@ -97,16 +112,44 @@ struct CaptureScreen: View {
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background {
-                    camera.stop()
-                    ready = false
-                    if recording {
-                        recording = false
-                        self.error = CaptureError.recordingInterrupted.localizedDescription
-                    }
-                } else if phase == .active, !ready, !busy {
-                    work("Menyiapkan kamera…") { await startCamera() }
+                    pauseCamera()
+                    cameraStartPending = wantsCamera
+                    interruptRecording()
+                } else if phase == .active {
+                    resumeCameraIfNeeded()
                 }
             }
+            .onChange(of: wantsCamera) { _, wanted in
+                if wanted { requestCameraStart() } else { pauseCamera() }
+            }
+            .onChange(of: busy) { _, value in
+                if !value { resumeCameraIfNeeded() }
+            }
+            #if !targetEnvironment(simulator)
+            .onReceive(sessionEvents(AVCaptureSession.wasInterruptedNotification)) { _ in
+                guard cameraViewOpen, wantsCamera, scenePhase != .background else { return }
+                cameraInterrupted = true
+                ready = false
+                captureError = CaptureError.sessionInterrupted.localizedDescription
+                camera.interrupt()
+                interruptRecording()
+            }
+            .onReceive(sessionEvents(AVCaptureSession.interruptionEndedNotification)) { _ in
+                guard cameraInterrupted else { return }
+                cameraInterrupted = false
+                requestCameraStart()
+            }
+            .onReceive(sessionEvents(AVCaptureSession.runtimeErrorNotification)) { notification in
+                guard cameraViewOpen, wantsCamera, scenePhase != .background else { return }
+                let error = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError
+                let recover = ready && error?.domain == AVFoundationErrorDomain
+                    && error?.code == AVError.Code.mediaServicesWereReset.rawValue
+                pauseCamera()
+                interruptRecording()
+                captureError = CaptureError.sessionFailed.localizedDescription
+                if recover { requestCameraStart() }
+            }
+            #endif
             #if targetEnvironment(simulator)
             .onChange(of: fixture) { _, item in
                 guard let item else { return }
@@ -171,7 +214,6 @@ struct CaptureScreen: View {
         header
         if !run.autoId { manualIDField }
         if draftInvalid { invalidDraftBanner }
-        if recording, let recordingStarted { recordingIndicator(since: recordingStarted) }
     }
 
     @ViewBuilder
@@ -264,11 +306,18 @@ struct CaptureScreen: View {
     private func recordingIndicator(since start: Date) -> some View {
         TimelineView(.periodic(from: start, by: 1)) { context in
             let seconds = max(0, Int(context.date.timeIntervalSince(start)))
-            Label("Merekam \(seconds / 60):\(String(format: "%02d", seconds % 60))", systemImage: "record.circle.fill")
+            let elapsed = "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
+            Label("Merekam video dan audio · \(elapsed)", systemImage: "record.circle.fill")
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .accessibilityLabel("Merekam video dan audio")
+                .accessibilityValue(elapsed)
                 .accessibilityIdentifier("recording-indicator")
         }
+        .background(.regularMaterial)
     }
 
     @ViewBuilder
@@ -283,6 +332,11 @@ struct CaptureScreen: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(captureError).foregroundStyle(.secondary)
                 if permissionDenied { Button("Buka Pengaturan", action: openSettings) }
+                #if !targetEnvironment(simulator)
+                if !permissionDenied && !cameraInterrupted {
+                    Button("Coba kamera lagi", action: requestCameraStart).disabled(busy)
+                }
+                #endif
             }
         }
     }
@@ -292,7 +346,7 @@ struct CaptureScreen: View {
         return TabView(selection: binding) {
             ForEach(draft.indices, id: \.self) { index in
                 Group {
-                    if let image = previews[index] {
+                    if let image = previews[index] ?? thumbnails[index] {
                         Image(uiImage: image).resizable().scaledToFit()
                     } else {
                         ProgressView()
@@ -419,6 +473,10 @@ struct CaptureScreen: View {
             draft.count == run.sideCount || (run.type == .bunchWeight && !draft.isEmpty))
     }
 
+    private var wantsCamera: Bool {
+        reviewedSide == nil || draft.count < run.sideCount || (run.type.requiresVideo && !savedVideo)
+    }
+
     private var rotation: CGFloat {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive }
         return CameraPreview.PreviewView.rotation(for: scene?.interfaceOrientation ?? .portrait)
@@ -435,53 +493,109 @@ struct CaptureScreen: View {
             draft = try await store.draftPhotos(runID: run.id)
             savedVideo = await store.draftVideo(runID: run.id) != nil
             reviewedSide = draft.count < run.sideCount ? nil : draft.indices.last
-            for index in draft.indices { render(index) }
+            let restored = draft
+            thumbnails = await CapturePhotoProcessor.shared.thumbnails(for: restored)
         } catch {
             draftInvalid = true
         }
-        #if DEBUG
-        if !ProcessInfo.processInfo.arguments.contains("--ui-test") { gps.refresh() }
-        #else
-        gps.refresh()
-        #endif
-        await startCamera()
+        if wantsCamera, scenePhase != .background {
+            await startCamera()
+        } else if wantsCamera {
+            cameraStartPending = true
+        } else {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--ui-test") { return }
+            #endif
+            gps.refresh(requestPermission: false)
+        }
     }
 
+    private func requestCameraStart() {
+        cameraStartPending = wantsCamera
+        resumeCameraIfNeeded()
+    }
+
+    private func resumeCameraIfNeeded() {
+        guard cameraViewOpen, cameraStartPending, wantsCamera, !ready, !cameraInterrupted,
+              !busy, scenePhase == .active else { return }
+        work("Menyiapkan kamera…") { await startCamera() }
+    }
+
+    private func pauseCamera() {
+        cameraStartPending = false
+        cameraInterrupted = false
+        ready = false
+        camera.stop()
+    }
+
+    private func interruptRecording() {
+        guard recording else { return }
+        recording = false
+        error = CaptureError.recordingInterrupted.localizedDescription
+    }
+
+    #if !targetEnvironment(simulator)
+    private func sessionEvents(_ name: Notification.Name) -> some Publisher<Notification, Never> {
+        NotificationCenter.default.publisher(for: name, object: camera.session)
+            .receive(on: DispatchQueue.main)
+    }
+    #endif
+
     private func startCamera() async {
+        cameraStartPending = false
         #if targetEnvironment(simulator)
         captureError = "Pilih foto untuk mensimulasikan tangkapan kamera."
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-test") { return }
+        #endif
         #else
         do {
             try await camera.start(withVideo: run.type.requiresVideo)
+            guard cameraViewOpen, wantsCamera, !cameraInterrupted,
+                  !Task.isCancelled, scenePhase != .background else {
+                camera.stop()
+                return
+            }
             ready = true
             captureError = nil
             permissionDenied = false
         } catch {
+            guard cameraViewOpen, wantsCamera, scenePhase != .background else { return }
             captureError = error.localizedDescription
             permissionDenied = error as? CaptureError == .camera || error as? CaptureError == .microphone
+            cameraInterrupted = cameraInterrupted || (error as? CaptureError == .sessionInterrupted)
+            return
         }
         #endif
+        if !didRequestLocation, !Task.isCancelled {
+            didRequestLocation = true
+            gps.refresh()
+        }
     }
 
     private func startRecording() {
         work("Memulai rekaman…") {
             try await clearDraft()
             try await camera.startVideo(rotation: rotation) {
-                guard recording else { return }
-                recording = false
-                error = CaptureError.recordingInterrupted.localizedDescription
+                interruptRecording()
+            }
+            guard cameraViewOpen, ready, !cameraInterrupted, scenePhase != .background else {
+                camera.interrupt()
+                throw CaptureError.recordingInterrupted
             }
             recording = true
         }
     }
 
     private func savePhoto(_ data: Data) async throws {
-        let photo = try normalizedPhoto(data)
+        let photo = try await CapturePhotoProcessor.shared.prepare(data)
         let index = replacement ?? draft.count
         try await store.saveDraftPhoto(photo, runID: run.id, side: index)
+        let thumbnail = await CapturePhotoProcessor.shared.thumbnail(for: photo.jpeg)
         if index == draft.count { draft.append(photo) }
         else { draft[index] = photo }
-        render(index)
+        previews[index] = nil
+        thumbnails[index] = thumbnail
         replacement = nil
         if !recording { reviewedSide = index }
         if !run.type.requiresVideo { detect(photo, side: index) }
@@ -510,10 +624,12 @@ struct CaptureScreen: View {
         }
     }
 
-    private func render(_ index: Int) {
-        guard draft.indices.contains(index) else { return }
-        previews[index] = previewImage(draft[index].jpeg, maxPixel: 1600)
-        thumbnails[index] = previewImage(draft[index].jpeg, maxPixel: 168)
+    private func loadReviewedPreview() async {
+        guard let side = reviewedSide, draft.indices.contains(side), previews[side] == nil else { return }
+        let image = await CapturePhotoProcessor.shared.preview(for: draft[side].jpeg)
+        guard !Task.isCancelled, reviewedSide == side, let image else { return }
+        previews = previews.filter { abs($0.key - side) <= 1 }
+        previews[side] = image
     }
 
     private func requestSave() {

@@ -6,7 +6,7 @@ import SwiftUI
 import UIKit
 
 enum CaptureError: LocalizedError {
-    case camera, microphone, photo, video, concurrentCapture, recordingInterrupted
+    case camera, microphone, photo, video, concurrentCapture, recordingInterrupted, sessionFailed, sessionInterrupted
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +16,8 @@ enum CaptureError: LocalizedError {
         case .video: "Video dengan audio tidak dapat disimpan."
         case .concurrentCapture: "Kamera ini tidak dapat merekam video sambil mengambil foto."
         case .recordingInterrupted: "Rekaman terhenti. Mulai ulang rekaman untuk menyimpan sampel."
+        case .sessionFailed: "Kamera berhenti. Coba nyalakan kembali."
+        case .sessionInterrupted: "Kamera sedang terputus. Coba lagi setelah kamera tersedia."
         }
     }
 }
@@ -25,7 +27,7 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
     private let queue = DispatchQueue(label: "dev.sawitulm.palmannotate.capture")
     private let photos = AVCapturePhotoOutput()
     private let movies = AVCaptureMovieFileOutput()
-    private var photoContinuation: CheckedContinuation<Data, Error>?
+    private var photoCapture: (id: Int64, result: CheckedContinuation<Data, Error>)?
     private var videoStart: CheckedContinuation<Void, Error>?
     private var videoStop: CheckedContinuation<URL, Error>?
     private var recordingURL: URL?
@@ -33,20 +35,31 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
     private var configured = false
 
     func start(withVideo: Bool) async throws {
-        guard await AVCaptureDevice.requestAccess(for: .video) else { throw CaptureError.camera }
+        guard await Self.hasAccess(to: .video) else { throw CaptureError.camera }
         if withVideo {
-            guard await AVCaptureDevice.requestAccess(for: .audio) else { throw CaptureError.microphone }
+            guard await Self.hasAccess(to: .audio) else { throw CaptureError.microphone }
         }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async {
                 do {
                     if !self.configured { try self.configure(withVideo: withVideo) }
+                    guard !self.session.isInterrupted else { throw CaptureError.sessionInterrupted }
                     if !self.session.isRunning { self.session.startRunning() }
+                    guard !self.session.isInterrupted else { throw CaptureError.sessionInterrupted }
+                    guard self.session.isRunning else { throw CaptureError.sessionFailed }
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
                 }
             }
+        }
+    }
+
+    private static func hasAccess(to media: AVMediaType) async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: media) {
+        case .authorized: true
+        case .notDetermined: await AVCaptureDevice.requestAccess(for: media)
+        default: false
         }
     }
 
@@ -84,22 +97,40 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
 
     func stop() {
         queue.async {
-            self.recordingInterrupted = nil
-            if self.movies.isRecording { self.movies.stopRecording() }
+            self.cancelCaptures()
             if self.session.isRunning { self.session.stopRunning() }
         }
+    }
+
+    func interrupt() {
+        queue.async { self.cancelCaptures() }
+    }
+
+    private func cancelCaptures() {
+        photoCapture?.result.resume(throwing: CaptureError.sessionInterrupted)
+        photoCapture = nil
+        videoStart?.resume(throwing: CaptureError.recordingInterrupted)
+        videoStart = nil
+        videoStop?.resume(throwing: CaptureError.recordingInterrupted)
+        videoStop = nil
+        recordingInterrupted = nil
+        let abandoned = recordingURL
+        recordingURL = nil
+        if movies.isRecording { movies.stopRecording() }
+        if let abandoned { try? FileManager.default.removeItem(at: abandoned) }
     }
 
     func takePhoto(rotation: CGFloat) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             queue.async {
-                guard self.session.isRunning, self.photoContinuation == nil else {
+                guard self.session.isRunning, !self.session.isInterrupted, self.photoCapture == nil else {
                     continuation.resume(throwing: CaptureError.camera)
                     return
                 }
-                self.photoContinuation = continuation
+                let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+                self.photoCapture = (settings.uniqueID, continuation)
                 self.setRotation(self.photos.connection(with: .video), angle: rotation)
-                self.photos.capturePhoto(with: AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg]), delegate: self)
+                self.photos.capturePhoto(with: settings, delegate: self)
             }
         }
     }
@@ -107,7 +138,7 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
     func startVideo(rotation: CGFloat, onInterruption: (@MainActor @Sendable () -> Void)? = nil) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async {
-                guard self.session.isRunning, self.recordingURL == nil,
+                guard self.session.isRunning, !self.session.isInterrupted, !self.movies.isRecording, self.recordingURL == nil,
                       let connection = self.movies.connection(with: .video) else {
                     continuation.resume(throwing: CaptureError.video)
                     return
@@ -170,13 +201,24 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
     }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        let data = photo.fileDataRepresentation()
+        let id = photo.resolvedSettings.uniqueID
+        let data = error == nil ? photo.fileDataRepresentation() : nil
         queue.async {
-            let caller = self.photoContinuation
-            self.photoContinuation = nil
-            if let error { caller?.resume(throwing: error) }
-            else if let data { caller?.resume(returning: data) }
-            else { caller?.resume(throwing: CaptureError.photo) }
+            guard let request = self.photoCapture, request.id == id else { return }
+            self.photoCapture = nil
+            if let error { request.result.resume(throwing: error) }
+            else if let data { request.result.resume(returning: data) }
+            else { request.result.resume(throwing: CaptureError.photo) }
+        }
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishCaptureFor settings: AVCaptureResolvedPhotoSettings,
+                     error: Error?) {
+        let id = settings.uniqueID
+        queue.async {
+            guard let request = self.photoCapture, request.id == id else { return }
+            self.photoCapture = nil
+            request.result.resume(throwing: error ?? CaptureError.photo)
         }
     }
 
@@ -192,7 +234,10 @@ final class CaptureDevice: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureFil
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo fileURL: URL,
                     from connections: [AVCaptureConnection], error: Error?) {
         queue.async {
-            guard fileURL == self.recordingURL else { return }
+            guard fileURL == self.recordingURL else {
+                try? FileManager.default.removeItem(at: fileURL)
+                return
+            }
             let start = self.videoStart
             self.videoStart = nil
             let caller = self.videoStop
@@ -256,6 +301,7 @@ struct CameraPreview: UIViewRepresentable {
 @Observable
 final class CaptureLocation: NSObject, @preconcurrency CLLocationManagerDelegate {
     @ObservationIgnored private let manager = CLLocationManager()
+    @ObservationIgnored private var observingAuthorization = false
     private(set) var provenance = Provenance(status: .unavailable)
     private(set) var locating = false
 
@@ -265,11 +311,13 @@ final class CaptureLocation: NSObject, @preconcurrency CLLocationManagerDelegate
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
 
-    func refresh() {
+    func refresh(requestPermission: Bool = true) {
+        observingAuthorization = true
         provenance = Provenance(status: .unavailable)
         locating = false
         switch manager.authorizationStatus {
-        case .notDetermined: manager.requestWhenInUseAuthorization()
+        case .notDetermined:
+            if requestPermission { manager.requestWhenInUseAuthorization() }
         case .authorizedAlways, .authorizedWhenInUse:
             locating = true
             manager.requestLocation()
@@ -279,7 +327,7 @@ final class CaptureLocation: NSObject, @preconcurrency CLLocationManagerDelegate
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if manager.authorizationStatus != .notDetermined { refresh() }
+        if observingAuthorization, manager.authorizationStatus != .notDetermined { refresh(requestPermission: false) }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -332,7 +380,6 @@ final class CaptureLocation: NSObject, @preconcurrency CLLocationManagerDelegate
     }
 }
 
-@MainActor
 func normalizedPhoto(_ data: Data) throws -> CapturedPhoto {
     guard let image = UIImage(data: data), image.size.width > 0, image.size.height > 0 else { throw CaptureError.photo }
     if image.imageOrientation == .up, data.starts(with: [0xFF, 0xD8]), let pixels = image.cgImage {
@@ -346,7 +393,7 @@ func normalizedPhoto(_ data: Data) throws -> CapturedPhoto {
     return CapturedPhoto(jpeg: bytes, width: Int(image.size.width), height: Int(image.size.height))
 }
 
-func previewImage(_ data: Data, maxPixel: Int) -> UIImage? {
+private func previewImage(_ data: Data, maxPixel: Int) -> UIImage? {
     guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
     let options: [CFString: Any] = [
         kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -355,4 +402,30 @@ func previewImage(_ data: Data, maxPixel: Int) -> UIImage? {
         kCGImageSourceThumbnailMaxPixelSize: maxPixel,
     ]
     return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map(UIImage.init(cgImage:))
+}
+
+actor CapturePhotoProcessor {
+    static let shared = CapturePhotoProcessor()
+
+    func prepare(_ data: Data) throws -> CapturedPhoto {
+        try normalizedPhoto(data)
+    }
+
+    func thumbnail(for jpeg: Data) -> UIImage? {
+        previewImage(jpeg, maxPixel: 168)
+    }
+
+    func thumbnails(for photos: [CapturedPhoto]) -> [Int: UIImage] {
+        var thumbnails: [Int: UIImage] = [:]
+        for (index, photo) in photos.enumerated() {
+            if Task.isCancelled { break }
+            thumbnails[index] = thumbnail(for: photo.jpeg)
+        }
+        return thumbnails
+    }
+
+    func preview(for jpeg: Data) -> UIImage? {
+        guard !Task.isCancelled else { return nil }
+        return previewImage(jpeg, maxPixel: 1600)
+    }
 }
