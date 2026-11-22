@@ -102,6 +102,48 @@ import ZIPFoundation
         }
     }
 
+    @Test(arguments: [false, true])
+    func interruptedRunRemovalRecoversAtCommitBoundary(committed: Bool) async throws {
+        try await withStore { store, root in
+            let run = try await weightRun(store)
+            let first = try await commit(store, run)
+            let second = try await commit(store, run)
+            try await store.saveDraftPhoto(photo, runID: run.id, side: 0)
+
+            let fm = FileManager.default
+            let transaction = root.appendingPathComponent("run-removals").appendingPathComponent(UUID().uuidString)
+            for directory in ["trees", "drafts"] {
+                try fm.createDirectory(at: transaction.appendingPathComponent(directory), withIntermediateDirectories: true)
+            }
+            try fm.moveItem(at: root.appendingPathComponent("trees/\(first.id)"),
+                            to: transaction.appendingPathComponent("trees/\(first.id)"))
+            try fm.moveItem(at: root.appendingPathComponent("drafts/\(run.id)"),
+                            to: transaction.appendingPathComponent("drafts/\(run.id)"))
+            if committed {
+                try fm.moveItem(at: root.appendingPathComponent("trees/\(second.id)"),
+                                to: transaction.appendingPathComponent("trees/\(second.id)"))
+                try fm.moveItem(at: root.appendingPathComponent("runs/\(run.id).json"),
+                                to: transaction.appendingPathComponent("run.json"))
+            }
+
+            let reopened = try PackageStore(root: root)
+            let samples = try await reopened.trees(runID: run.id)
+            if committed {
+                #expect(samples.isEmpty)
+                #expect(try await reopened.runs(type: .bunchWeight).isEmpty)
+                #expect(!fm.fileExists(atPath: root.appendingPathComponent("drafts/\(run.id)").path))
+            } else {
+                #expect(samples.map(\.id) == [second.id, first.id])
+                #expect(try await reopened.draftPhotos(runID: run.id).first?.jpeg == jpeg)
+                for tree in samples {
+                    let url = await reopened.photoURL(treeID: tree.id, side: 0)
+                    #expect(try Data(contentsOf: url) == jpeg)
+                }
+            }
+            #expect(!fm.fileExists(atPath: transaction.path))
+        }
+    }
+
     @Test func exportIncludesDraftSamplesAndReportsProgress() async throws {
         try await withStore { store, root in
             let run = try await weightRun(store)

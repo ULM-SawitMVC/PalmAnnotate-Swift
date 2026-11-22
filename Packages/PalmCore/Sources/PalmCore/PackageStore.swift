@@ -66,7 +66,7 @@ public actor PackageStore {
 
     public init(root: URL) throws {
         self.root = root
-        for directory in ["runs", "trees", "drafts", "staging"] {
+        for directory in ["runs", "trees", "drafts", "staging", "run-removals"] {
             try FileManager.default.createDirectory(at: root.appendingPathComponent(directory), withIntermediateDirectories: true)
         }
         let identity = root.appendingPathComponent("install-id")
@@ -81,6 +81,7 @@ public actor PackageStore {
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         try excluded.setResourceValues(values)
+        try Self.recoverRunRemovals(root: root)
         let staging = root.appendingPathComponent("staging")
         for item in try FileManager.default.contentsOfDirectory(at: staging, includingPropertiesForKeys: nil) {
             try FileManager.default.removeItem(at: item)
@@ -142,18 +143,56 @@ public actor PackageStore {
     }
 
     public func deleteRun(id: String) throws {
+        try Self.recoverRunRemovals(root: root)
         let runFile = runURL(id)
         guard fm.fileExists(atPath: runFile.path) else { throw StoreError.missingItem }
-        let tombstone = root.appendingPathComponent("staging").appendingPathComponent(UUID().uuidString)
-        try fm.createDirectory(at: tombstone, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: tombstone) }
-        for document in try allTrees() where document.run.id == id {
-            try fm.moveItem(at: treeRoot(document.id), to: tombstone.appendingPathComponent("tree-" + document.id))
+        let trees = try allTrees().filter { $0.run.id == id }
+        let transaction = root.appendingPathComponent("run-removals").appendingPathComponent(UUID().uuidString)
+        do {
+            for directory in ["trees", "drafts"] {
+                try fm.createDirectory(at: transaction.appendingPathComponent(directory), withIntermediateDirectories: true)
+            }
+            for tree in trees {
+                try fm.moveItem(at: treeRoot(tree.id), to: transaction.appendingPathComponent("trees/\(tree.id)"))
+            }
+            if fm.fileExists(atPath: draftRoot(id).path) {
+                try fm.moveItem(at: draftRoot(id), to: transaction.appendingPathComponent("drafts/\(id)"))
+            }
+            // The final rename commits the removal. Recovery restores the samples if this marker is absent.
+            try fm.moveItem(at: runFile, to: transaction.appendingPathComponent("run.json"))
+        } catch {
+            try Self.recoverRunRemoval(transaction, root: root)
+            throw error
         }
-        if fm.fileExists(atPath: draftRoot(id).path) {
-            try fm.moveItem(at: draftRoot(id), to: tombstone.appendingPathComponent("draft"))
+        try Self.recoverRunRemoval(transaction, root: root)
+    }
+
+    private static func recoverRunRemovals(root: URL) throws {
+        let directory = root.appendingPathComponent("run-removals")
+        let transactions = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        for transaction in transactions {
+            try recoverRunRemoval(transaction, root: root)
         }
-        try fm.moveItem(at: runFile, to: tombstone.appendingPathComponent("run.json"))
+    }
+
+    private static func recoverRunRemoval(_ transaction: URL, root: URL) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: transaction.path) else { return }
+        if fm.fileExists(atPath: transaction.appendingPathComponent("run.json").path) {
+            // Keep the commit marker until the entire journal leaves the recovery directory.
+            let garbage = root.appendingPathComponent("staging").appendingPathComponent(transaction.lastPathComponent)
+            if (try? fm.moveItem(at: transaction, to: garbage)) != nil { try? fm.removeItem(at: garbage) }
+            return
+        }
+        for directory in ["trees", "drafts"] {
+            let moved = transaction.appendingPathComponent(directory)
+            guard fm.fileExists(atPath: moved.path) else { continue }
+            let original = root.appendingPathComponent(directory)
+            for item in try fm.contentsOfDirectory(at: moved, includingPropertiesForKeys: nil) {
+                try fm.moveItem(at: item, to: original.appendingPathComponent(item.lastPathComponent))
+            }
+        }
+        try? fm.removeItem(at: transaction)
     }
 
     public func trees(runID: String) throws -> [TreeDocument] {
