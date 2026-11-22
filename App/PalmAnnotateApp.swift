@@ -11,6 +11,7 @@ struct PalmAnnotateApp: App {
 }
 
 private struct PalmAnnotateRoot: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var store: PackageStore?
     @State private var error: String?
 
@@ -31,9 +32,26 @@ private struct PalmAnnotateRoot: View {
                             }
                         }
                     }
+                    Section {
+                        NavigationLink {
+                            PrivacyPolicyView()
+                        } label: {
+                            Label("Kebijakan Privasi", systemImage: "hand.raised")
+                        }
+                        if let support = URL(string: "https://github.com/ULM-SawitMVC/PalmAnnotate-Swift/issues") {
+                            Link(destination: support) {
+                                Label("Dukungan", systemImage: "questionmark.circle")
+                            }
+                        }
+                    } footer: {
+                        if dynamicTypeSize.isAccessibilitySize { hubFooter }
+                    }
                 }
                 .navigationTitle("PalmAnnotate")
-                .safeAreaInset(edge: .bottom) { hubFooter }
+                .navigationBarTitleDisplayMode(dynamicTypeSize.isAccessibilitySize ? .inline : .automatic)
+                .safeAreaInset(edge: .bottom) {
+                    if !dynamicTypeSize.isAccessibilitySize { hubFooter.background(.bar) }
+                }
             } else if let error {
                 ContentUnavailableView("Penyimpanan tidak tersedia", systemImage: "externaldrive.badge.exclamationmark", description: Text(error))
             } else {
@@ -80,7 +98,6 @@ private struct PalmAnnotateRoot: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(.bar)
     }
 
     private var versionLabel: String {

@@ -8,7 +8,12 @@ targets:
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - App
+      - path: App
+        excludes: [PRIVACY.md, PrivacyInfo.xcprivacy]
+      - path: App/PRIVACY.md
+        buildPhase: resources
+      - path: App/PrivacyInfo.xcprivacy
+        buildPhase: resources
       - path: Vendor/ONNX-Runtime-LICENSE
         buildPhase: resources
     dependencies:
@@ -46,9 +51,9 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
-        NSCameraUsageDescription: Kamera digunakan untuk mengambil foto dan video sampel sawit.
-        NSMicrophoneUsageDescription: Mikrofon digunakan untuk merekam audio pada video multisisi.
-        NSLocationWhenInUseUsageDescription: Lokasi dicatat sebagai bagian dari metadata sampel.
+        NSCameraUsageDescription: PalmAnnotate memakai kamera untuk memotret pohon sawit dari beberapa sisi, merekam video pohon, dan memotret tandan untuk anotasi.
+        NSMicrophoneUsageDescription: PalmAnnotate merekam suara di sekitar pohon saat Anda memulai rekaman Multisisi Video. Suara disimpan bersama video sampel.
+        NSLocationWhenInUseUsageDescription: PalmAnnotate mencatat koordinat pengambilan bersama sampel. Koordinat dapat ikut saat Anda mengekspor sampel. Anda tetap bisa mengambil sampel tanpa izin lokasi.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

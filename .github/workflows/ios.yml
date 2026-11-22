@@ -39,3 +39,9 @@ jobs:
           xcodebuild -project PalmAnnotate.xcodeproj -scheme PalmAnnotate \
             -destination "generic/platform=iOS Simulator" -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO build-for-testing
+      - name: Verify bundled privacy resources
+        run: |
+          app=DerivedData/Build/Products/Debug-iphonesimulator/PalmAnnotate.app
+          plutil -lint "$app/PrivacyInfo.xcprivacy"
+          cmp App/PrivacyInfo.xcprivacy "$app/PrivacyInfo.xcprivacy"
+          cmp App/PRIVACY.md "$app/PRIVACY.md"

@@ -2,6 +2,23 @@ import XCTest
 
 final class ModuleNavigationTests: XCTestCase {
     @MainActor
+    func testPrivacyPolicyOpensFromModuleHub() {
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments.append("--ui-test")
+        app.launch()
+
+        let list = app.collectionViews.firstMatch
+        app.descendants(matching: .any)["Dukungan"].firstMatch.reveal(scrolling: list)
+        let policy = app.buttons["Kebijakan Privasi"]
+        policy.reveal(scrolling: list)
+        policy.tap()
+        XCTAssertTrue(app.navigationBars["Kebijakan Privasi"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Data yang digunakan"].exists)
+        XCTAssertTrue(app.staticTexts["Penyimpanan dan ekspor"].exists)
+    }
+
+    @MainActor
     func testModuleScreensInPortrait() {
         checkModuleScreens(orientation: .portrait)
     }

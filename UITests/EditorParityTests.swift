@@ -1,6 +1,29 @@
 import XCTest
 
 final class EditorParityTests: XCTestCase {
+    @MainActor
+    func testBoxCanBeSelectedAndEditedWithoutTouchingPhoto() {
+        let app = launch(.portrait, "--ui-test-capture")
+        openWeightEditor(app)
+        let menu = app.buttons["Kotak anotasi"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        menu.tap()
+        app.buttons["Tandan 1"].tap()
+        XCTAssertTrue(app.textFields["measurement-weight"].waitForExistence(timeout: 5))
+
+        app.segmentedControls.buttons["Edit"].tap()
+        menu.tap()
+        app.buttons["Ubah koordinat kotak"].tap()
+        let editor = app.navigationBars["Ubah koordinat kotak"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        let left = app.textFields["Kiri (X)"]
+        XCTAssertTrue(left.exists)
+        XCTAssertNotNil((left.value as? String).flatMap { Float($0) })
+        editor.buttons["Simpan"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["measurement-weight"].exists)
+    }
+
     // MARK: Back
 
     @MainActor
@@ -229,8 +252,10 @@ final class EditorParityTests: XCTestCase {
 
     @MainActor
     private func openWeightEditor(_ app: XCUIApplication) {
-        let module = app.staticTexts["Berat Tandan"]
-        XCTAssertTrue(module.waitForExistence(timeout: 90))
+        let modules = app.collectionViews.firstMatch
+        XCTAssertTrue(modules.waitForExistence(timeout: 90))
+        let module = modules.staticTexts["Berat Tandan"]
+        module.reveal(scrolling: modules)
         module.tap()
         app.staticTexts["DAMIMAS · QA"].tap()
         tapSample(app)

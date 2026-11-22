@@ -6,6 +6,7 @@ struct AnnotationEditor: View {
     let store: PackageStore
     var onNext: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var document: TreeDocument?
     @State private var cache = SideImageCache()
     @State private var unreadable: Set<Int> = []
@@ -22,6 +23,7 @@ struct AnnotationEditor: View {
     @State private var showSuggestions = false
     @State private var showResultsAfterDedup = false
     @State private var showMismatch = false
+    @State private var boxCoordinates: BoxCoordinateTarget?
     @State private var draft = MeasurementDraft()
     @FocusState private var field: MeasurementField?
     @State private var wide = UIScreen.main.bounds.width > UIScreen.main.bounds.height
@@ -105,6 +107,16 @@ struct AnnotationEditor: View {
                 }
             }
         }
+        .sheet(item: $boxCoordinates) { target in
+            BoxCoordinateForm(width: target.width, height: target.height, initial: target.rect) { rect in
+                drawing = false
+                if let ref = target.ref {
+                    persist { $0.changeBox(ref, rect: rect) }
+                } else {
+                    addBox(rect, side: target.side)
+                }
+            }
+        }
         .task { await load() }
         .modifier(ErrorAlert(message: $error))
         .navigationBarBackButtonHidden(true)
@@ -140,14 +152,14 @@ struct AnnotationEditor: View {
                 HStack(alignment: .top, spacing: 12) {
                     photoPanel(tree)
                     controlsColumn(tree, panel: panel)
-                        .frame(width: min(380, proxy.size.width * 0.4))
+                        .frame(width: min(420, proxy.size.width * (dynamicTypeSize.isAccessibilitySize ? 0.55 : 0.4)))
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 8)
             } else {
                 VStack(spacing: 8) {
                     photoPanel(tree)
-                        .frame(height: field == nil ? max(220, proxy.size.height * 0.55) : max(120, proxy.size.height * 0.3))
+                        .frame(height: portraitPhotoHeight(in: proxy.size.height))
                         .padding(.horizontal)
                     controlsColumn(tree, panel: panel)
                         .frame(maxWidth: 760)
@@ -186,6 +198,13 @@ struct AnnotationEditor: View {
 
     private var isLandscape: Bool { wide }
 
+    private func portraitPhotoHeight(in height: CGFloat) -> CGFloat {
+        if dynamicTypeSize.isAccessibilitySize || field != nil {
+            return max(120, height * 0.3)
+        }
+        return max(220, height * 0.55)
+    }
+
     private func photoPanel(_ tree: TreeDocument) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             sideHeader(tree)
@@ -209,6 +228,7 @@ struct AnnotationEditor: View {
                             Button("Foto \(item.id + 1)") { show(side: item.id, animated: true) }
                                 .buttonStyle(.borderedProminent)
                                 .tint(side == item.id ? .accentColor : .secondary)
+                                .accessibilityAddTraits(side == item.id ? .isSelected : [])
                                 .frame(minHeight: 44)
                         }
                     }
@@ -269,11 +289,7 @@ struct AnnotationEditor: View {
                 viewport: Binding(get: { viewports[item.id] ?? Viewport() }, set: { viewports[item.id] = $0 }),
                 onTap: { tap(box: $0, side: item.id) },
                 onGrab: { selected = BoxRef(side: item.id, box: $0) },
-                onDraw: { rect in
-                    persist { tree in
-                        if let ref = tree.addBox(side: item.id, rect: rect) { selected = ref }
-                    }
-                },
+                onDraw: { addBox($0, side: item.id) },
                 onChange: { box, rect in persist { $0.changeBox(BoxRef(side: item.id, box: box), rect: rect) } })
             .accessibilityIdentifier(item.id == side ? "annotation-photo" : "annotation-photo-\(item.id + 1)")
     }
@@ -380,6 +396,7 @@ struct AnnotationEditor: View {
                         .toggleStyle(.button)
                         .labelStyle(.iconOnly)
                 }
+                boxMenu(tree)
                 if mode == .edit {
                     Toggle("Gambar kotak", systemImage: "crop", isOn: $drawing)
                         .toggleStyle(.button)
@@ -435,9 +452,46 @@ struct AnnotationEditor: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func boxMenu(_ tree: TreeDocument) -> some View {
+        let photo = tree.sides[side]
+        let numbers = labels(tree, side: side)
+        return Menu("Kotak anotasi", systemImage: "list.bullet.rectangle") {
+            ForEach(photo.annotations) { box in
+                let ref = BoxRef(side: photo.id, box: box.id)
+                Button {
+                    drawing = false
+                    tap(box: box.id, side: photo.id)
+                } label: {
+                    let label = "Tandan \(numbers[box.id, default: 0])"
+                    if selected == ref {
+                        Label(label, systemImage: "checkmark")
+                    } else {
+                        Text(label)
+                    }
+                }
+            }
+            if mode == .edit && pendingLink == nil {
+                if selected?.side == photo.id, let selected, let box = tree.annotation(selected) {
+                    Button("Ubah koordinat kotak") {
+                        boxCoordinates = BoxCoordinateTarget(photo: photo, ref: selected, rect: box.rect)
+                    }
+                    .disabled(detecting)
+                }
+                Button("Tambah kotak dengan koordinat") {
+                    boxCoordinates = BoxCoordinateTarget(photo: photo)
+                }
+                .disabled(detecting)
+            }
+        }
+        .disabled(photo.annotations.isEmpty && (mode == .review || pendingLink != nil))
+        .accessibilityHint("Pilih tandan pada foto ini. Gunakan mode Edit untuk memasukkan koordinat kotak.")
+    }
+
     private func ripenessBar(_ tree: TreeDocument) -> some View {
         let current = selected.flatMap { tree.annotation($0)?.ripeness }
-        return HStack(spacing: 8) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
             ForEach(Ripeness.allCases.filter { $0 != .unassigned }) { value in
                 Button {
                     guard let selected else { return }
@@ -513,6 +567,12 @@ struct AnnotationEditor: View {
     }
 
     // MARK: Actions
+
+    private func addBox(_ rect: PixelBox, side: Int) {
+        persist { tree in
+            if let ref = tree.addBox(side: side, rect: rect) { selected = ref }
+        }
+    }
 
     private func show(side value: Int, animated: Bool) {
         guard let document, document.sides.indices.contains(value) else { return }

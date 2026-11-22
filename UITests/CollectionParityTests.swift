@@ -67,20 +67,24 @@ final class CollectionParityTests: XCTestCase {
         app.buttons["Sesi baru"].tap()
         let variety = app.textFields["Varietas"]
         XCTAssertTrue(variety.waitForExistence(timeout: 5))
+        let form = app.collectionViews.containing(.textField, identifier: "Varietas").firstMatch
+        let toggle = form.switches["auto-id-toggle"]
+        toggle.reveal(scrolling: form)
+        XCTAssertEqual(toggle.value as? String, "1")
+        // The accessible switch covers the row. Tap the center of the trailing switch control.
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
+            .withOffset(CGVector(dx: -44, dy: 0)).tap()
+        let off = NSPredicate(format: "value == '0'")
+        XCTAssertEqual(XCTWaiter().wait(for: [expectation(for: off, evaluatedWith: toggle)], timeout: 10), .completed)
+        let note = form.staticTexts["Nomor pohon diketik sendiri saat pengambilan."]
+        note.reveal(scrolling: form)
+
+        variety.reveal(scrolling: form)
         variety.tap()
         variety.typeText("TEST")
         let block = app.textFields["Blok"]
         block.tap()
         block.typeText("M1\n")
-        let toggle = app.switches["ID otomatis"]
-        toggle.reveal(scrolling: app)
-        XCTAssertEqual(toggle.value as? String, "1")
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-        let off = NSPredicate(format: "value == '0'")
-        XCTAssertEqual(XCTWaiter().wait(for: [expectation(for: off, evaluatedWith: toggle)], timeout: 10), .completed)
-        let note = app.staticTexts["Nomor pohon diketik sendiri saat pengambilan."]
-        for _ in 0..<3 where !note.exists { app.swipeUp() }
-        XCTAssertTrue(note.exists)
         app.buttons["Simpan"].tap()
         let row = app.staticTexts["ID pohon"]
         XCTAssertTrue(row.waitForExistence(timeout: 10) || { app.swipeUp(); return row.waitForExistence(timeout: 5) }())
